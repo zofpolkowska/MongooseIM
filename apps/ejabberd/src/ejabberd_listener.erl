@@ -89,11 +89,8 @@ report_duplicated_portips(L) ->
             Module :: atom() | tuple(),
             Opts :: [any()]) -> any().
 start(Port, Module, Opts) ->
-    %% Check if the module is an ejabberd listener or an independent listener
-    case Module:socket_type() of
-        independent -> Module:start_listener(Port, Opts);
-        _ -> start_dependent(Port, Module, Opts)
-    end.
+    %% at this point, Module:socket_type() must not be 'independent'
+    start_dependent(Port, Module, Opts).
 
 -spec start_dependent(Port :: _,
                       Module :: atom() | tuple(),
@@ -376,13 +373,19 @@ start_module_sup(_Port, Module) ->
 -spec start_listener_sup(_, Module :: atom(), Opts :: [any()])
       -> {'error',_} | {'ok','undefined' | pid()} | {'ok','undefined' | pid(),_}.
 start_listener_sup(Port, Module, Opts) ->
-    ChildSpec = {Port,
-                 {?MODULE, start, [Port, Module, Opts]},
-                 transient,
-                 brutal_kill,
-                 worker,
-                 [?MODULE]},
-    supervisor:start_child(ejabberd_listeners, ChildSpec).
+    case Module:socket_type() of
+        independent ->
+            Module:start_listener(Port, Opts);
+        _ ->
+
+            ChildSpec = {Port,
+                         {?MODULE, start, [Port, Module, Opts]},
+                         transient,
+                         brutal_kill,
+                         worker,
+                         [?MODULE]},
+            supervisor:start_child(ejabberd_listeners, ChildSpec)
+    end.
 
 -spec stop_listeners() -> 'ok'.
 stop_listeners() ->
