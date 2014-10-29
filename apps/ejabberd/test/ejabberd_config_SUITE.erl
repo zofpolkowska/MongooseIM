@@ -9,7 +9,8 @@
 
 -import(ejabberd_helper, [start_ejabberd/1,
                           stop_ejabberd/0,
-                          use_config_file/2]).
+                          use_config_file/2,
+                          start_ejabberd_with_config/2]).
 
 all() ->
     [smoke,
@@ -140,10 +141,6 @@ is_empty(_) -> false.
 %%
 %% Helpers
 %%
-
-start_ejabberd_with_config(Config, ConfigFile) ->
-    use_config_file(Config, ConfigFile),
-    ok = start_ejabberd(Config).
 
 multiple_modules_sections() ->
     [{local_config, {modules, <<"localhost">>}, [{mod_offline, []}]},
