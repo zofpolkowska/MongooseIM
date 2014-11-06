@@ -42,7 +42,7 @@
          process_iq_disco_items/4,
          broadcast_service_message/2,
          can_use_nick/3,
-     room_jid_to_pid/1]).
+         room_jid_to_pid/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -247,6 +247,8 @@ init([Host, Opts]) ->
                         [{ram_copies, [node()]},
                          {attributes, record_info(fields, muc_online_room)}]),
     mnesia:add_table_copy(muc_online_room, node(), ram_copies),
+    mnesia:add_table_copy(muc_room, node(), disc_copies),
+    mnesia:add_table_copy(muc_registered, node(), disc_copies),
     catch ets:new(muc_online_users, [bag, named_table, public, {keypos, 2}]),
     MyHost = gen_mod:get_opt_host(Host, Opts, <<"conference.@HOST@">>),
     update_tables(MyHost),
@@ -500,7 +502,7 @@ route_by_type(<<"iq">>, {From, To, Packet}, #state{host = Host} = State) ->
     case jlib:iq_query_info(Packet) of
         #iq{type = get, xmlns = ?NS_DISCO_INFO = XMLNS, lang = Lang} = IQ ->
             Info = ejabberd_hooks:run_fold(disco_info, ServerHost, [],
-                                           [ServerHost, ?MODULE, <<>>, <<>>]),
+                                           [ServerHost, ?MODULE, "", Lang]),
             Res = IQ#iq{type = result,
                         sub_el = [#xmlel{name = <<"query">>,
                                          attrs = [{<<"xmlns">>, XMLNS}],
