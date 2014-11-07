@@ -1,8 +1,13 @@
 -module(mod_websocket_turn).
 
+-behaviour(gen_mod).
 -behaviour(cowboy_websocket_handler).
 
 -include("ejabberd.hrl").
+
+%% gen_mod callbacks
+-export([start/2,
+         stop/1]).
 
 %% cowboy_websocket_handler callbacks
 -export([init/3,
@@ -11,6 +16,20 @@
          websocket_info/3,
          websocket_terminate/3]).
 
+%%--------------------------------------------------------------------
+%% gen_mod callbacks
+%%--------------------------------------------------------------------
+start(_Host, _Opts) ->
+    ?INFO_MSG("module ~p started", [?MODULE]),
+    ok.
+
+stop(_Host) ->
+    ?INFO_MSG("module ~p stopped", [?MODULE]),
+    ok.
+
+%%--------------------------------------------------------------------
+%% cowboy_websocket_handler callbacks
+%%--------------------------------------------------------------------
 init(_Transport, _Req, _Opts) ->
     {upgrade, protocol, cowboy_websocket}.
 
