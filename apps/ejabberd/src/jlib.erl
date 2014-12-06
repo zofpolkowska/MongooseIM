@@ -297,11 +297,9 @@ are_equal_jids(#jid{luser = LUser, lserver = LServer, lresource = LRes},
 are_equal_jids(_, _) ->
     false.
 
-
 -spec binary_to_jid(binary()) -> 'error' | ejabberd:jid().
 binary_to_jid(J) ->
     binary_to_jid1(J, <<>>).
-
 
 -spec binary_to_jid1(binary(), binary()) -> 'error' | ejabberd:jid().
 binary_to_jid1(<<$@, _J/binary>>, <<>>) ->

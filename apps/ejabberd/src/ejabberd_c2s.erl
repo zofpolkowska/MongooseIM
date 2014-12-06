@@ -1083,7 +1083,7 @@ session_established({xmlstreamelement,
 
 session_established({xmlstreamelement, El}, StateData) ->
     FromJID = StateData#state.jid,
-                                                % Check 'from' attribute in stanza RFC 3920 Section 9.1.2
+    %% Check 'from' attribute in stanza RFC 3920 Section 9.1.2
     case check_from(El, FromJID) of
         'invalid-from' ->
             send_element(StateData, ?INVALID_FROM),
@@ -1138,7 +1138,7 @@ session_established2(El, StateData) ->
     NewEl = insert_user_lang(El, StateData, Attrs),
     NewState =
         case ToJID of
-            error -> handle_errors_and_malformed_jids(StateData, Attrs, NewEl);
+            error -> ignore_or_send_error_feedback(StateData, Attrs, NewEl);
             _     -> send_stanza(StateData, Name, User, Server,
                                  FromJID, ToJID, NewEl)
         end,
@@ -1186,7 +1186,7 @@ send_presence(StateData, User, Server, FromJID, ToJID, El) ->
             presence_track(FromJID, ToJID, PresenceEl, StateData)
     end.
 
-handle_errors_and_malformed_jids(StateData, Attrs, El) ->
+ignore_or_send_error_feedback(StateData, Attrs, El) ->
     case xml:get_attr_s(<<"type">>, Attrs) of
         <<"error">> -> StateData;
         <<"result">> -> StateData;
@@ -2138,9 +2138,10 @@ is_privacy_allow(StateData, From, To, Packet, Dir) ->
 
 
 -spec presence_broadcast(State :: state(),
-                         From :: 'undefined' | ejabberd:jid(),
+                         From :: undefined  | ejabberd:jid(),
                          JIDSet :: ?SETS:gb_set(),
-                         Packet :: jlib:xmlel()) -> 'ok'.
+                         Packet :: jlib:xmlel()) ->
+                            ok.
 presence_broadcast(StateData, From, JIDSet, Packet) ->
     lists:foreach(fun(JID) ->
                           FJID = jlib:make_jid(JID),
@@ -2154,10 +2155,11 @@ presence_broadcast(StateData, From, JIDSet, Packet) ->
 
 
 -spec presence_broadcast_to_trusted(State :: state(),
-                                    From :: 'undefined' | ejabberd:jid(),
+                                    From :: undefined  | ejabberd:jid(),
                                     T :: ?SETS:gb_set(),
                                     A :: ?SETS:gb_set(),
-                                    Packet :: jlib:xmlel()) -> 'ok'.
+                                    Packet :: jlib:xmlel()) ->
+                                       ok.
 presence_broadcast_to_trusted(StateData, From, T, A, Packet) ->
     lists:foreach(
       fun(JID) ->
@@ -2211,8 +2213,9 @@ presence_broadcast_first(From, StateData, Packet) ->
     end.
 
 
--spec remove_element(E :: 'error' | tuple(),
-                     Set :: ?SETS:gb_set()) -> ?SETS:gb_set().
+-spec remove_element(E :: error  | tuple(),
+                     Set :: ?SETS:gb_set()) ->
+                        ?SETS:gb_set().
 remove_element(E, Set) ->
     case ?SETS:is_element(E, Set) of
         true ->
@@ -2519,35 +2522,29 @@ is_ip_blacklisted(undefined) ->
 is_ip_blacklisted({IP,_Port}) ->
     ejabberd_hooks:run_fold(check_bl_c2s, false, [IP]).
 
-
 %% @doc Check from attributes.
--spec check_from(El :: jlib:xmlel(), FromJID :: ejabberd:jid())
-                -> 'invalid-from'  | jlib:xmlel().
+-spec check_from(El :: jlib:xmlel(), FromJID :: ejabberd:jid()) ->
+                    'invalid-from'  | jlib:xmlel().
 check_from(El, FromJID) ->
     case xml:get_tag_attr(<<"from">>, El) of
-        false ->
-            El;
-        {value, SJID} ->
-            JID = jlib:binary_to_jid(SJID),
-            case JID of
-                error ->
-                    'invalid-from';
-                #jid{} ->
-                    if
-                        (JID#jid.luser == FromJID#jid.luser) and
-                        (JID#jid.lserver == FromJID#jid.lserver) and
-                        (JID#jid.lresource == FromJID#jid.lresource) ->
-                            El;
-                        (JID#jid.luser == FromJID#jid.luser) and
-                        (JID#jid.lserver == FromJID#jid.lserver) and
-                        (JID#jid.lresource == <<>>) ->
-                            El;
-                        true ->
-                            'invalid-from'
-                    end
-            end
+        false         -> El;
+        {value, SJID} -> verify_supplied_jid
+                           (El, FromJID, jlib:binary_to_jid(SJID))
     end.
 
+verify_supplied_jid(_, _, error) -> 'invalid-from';
+verify_supplied_jid(El, FromJID, #jid{} = AttrJID) ->
+    case is_sender_jid_or_bare_sender_jid(FromJID, AttrJID) of
+        true -> El;
+        false -> 'invalid-from'
+    end.
+
+is_sender_jid_or_bare_sender_jid(SenderJID, Candidate) ->
+    jlib:are_equal_jids(SenderJID, Candidate)
+    orelse
+      (SenderJID#jid.luser == Candidate#jid.luser)
+        andalso (SenderJID#jid.lserver == Candidate#jid.lserver)
+        andalso (Candidate#jid.lresource == <<>>).
 
 fsm_limit_opts(Opts) ->
     case lists:keyfind(max_fsm_queue, 1, Opts) of
@@ -2555,10 +2552,8 @@ fsm_limit_opts(Opts) ->
             [{max_queue, N}];
         _ ->
             case ejabberd_config:get_local_option(max_fsm_queue) of
-                N when is_integer(N) ->
-                    [{max_queue, N}];
-                _ ->
-                    []
+                N when is_integer(N) -> [{max_queue, N}];
+                _ -> []
             end
     end.
 
@@ -2655,7 +2650,9 @@ pack(S = #state{pres_a=A,
             pres_t=NewT}.
 
 
--spec pack_jid_set(Set :: ?SETS:gb_set(), Pack :: gb_tree()) -> {?SETS:gb_set(),gb_tree()}.
+-spec pack_jid_set(Set :: ?SETS:gb_set(),
+                   Pack :: gb_tree()) ->
+                      {?SETS:gb_set(), gb_tree()}.
 pack_jid_set(Set, Pack) ->
     Jids = ?SETS:to_list(Set),
     {PackedJids, NewPack} = pack_jids(Jids, Pack, []),
@@ -2843,10 +2840,8 @@ buffer_out_stanza(Packet, #state{stream_mgmt_buffer = Buffer,
     NPacket = maybe_add_timestamp(Packet, Timestamp),
 
     NS = case is_buffer_full(NewSize, BufferMax) of
-             true->
-                 defer_resource_constraint_check(S);
-             _ ->
-                 S
+             true -> defer_resource_constraint_check(S);
+             _    -> S
          end,
     NS#state{stream_mgmt_buffer_size = NewSize,
              stream_mgmt_buffer = [NPacket | Buffer]}.
