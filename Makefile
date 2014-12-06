@@ -33,7 +33,7 @@ ct: deps quick_compile
 	@if [ "$(SUITE)" ]; then ./rebar -q ct suite=$(SUITE) skip_deps=true;\
 	else ./rebar -q ct skip_deps=true; fi
 
-quick_ct:
+quick_ct: quick_compile
 	ct_run -noshell -dir ./apps/ejabberd/test/ -pa ./apps/ejabberd/ebin/ -pa ./deps/*/ebin -suite $(SUITE) -ct_hooks ejabberd_cth -logdir /tmp/ct -enable_builtin_hooks false
 
 test: test_deps
