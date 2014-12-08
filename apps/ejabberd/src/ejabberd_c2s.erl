@@ -688,42 +688,9 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
         {?NS_SASL, <<"auth">>} when TLSEnabled or not TLSRequired ->
             Mech = xml:get_attr_s(<<"mechanism">>, Attrs),
             ClientIn = jlib:decode_base64(xml:get_cdata(Els)),
-            case cyrsasl:server_start(StateData#state.sasl_state,
-                                      Mech,
-                                      ClientIn) of
-                {ok, Props} ->
-                    handle_sasl_success(StateData, Props);
-                {continue, ServerOut, NewSASLState} ->
-                    send_element(StateData,
-                                 #xmlel{name = <<"challenge">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                        children = [#xmlcdata{content = jlib:encode_base64(ServerOut)}]}),
-                    fsm_next_state(wait_for_sasl_response,
-                                   StateData#state{
-                                     sasl_state = NewSASLState});
-                {error, Error, Username} ->
-                    IP = peerip(StateData#state.sockmod, StateData#state.socket),
-                    ?INFO_MSG(
-                       "(~w) Failed authentication for ~s@~s from IP ~s (~w)",
-                       [StateData#state.socket,
-                        Username, StateData#state.server, jlib:ip_to_list(IP), IP]),
-                    ejabberd_hooks:run(auth_failed, StateData#state.server,
-                                       [Username, StateData#state.server]),
-                    send_element(StateData,
-                                 #xmlel{name = <<"failure">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                        children = [#xmlel{name = Error}]}),
-                    {next_state, wait_for_feature_request, StateData,
-                     ?C2S_OPEN_TIMEOUT};
-                {error, Error} ->
-                    ejabberd_hooks:run(auth_failed, StateData#state.server,
-                                       [unknown, StateData#state.server]),
-                    send_element(StateData,
-                                 #xmlel{name = <<"failure">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                        children = [#xmlel{name = Error}]}),
-                    fsm_next_state(wait_for_feature_request, StateData)
-            end;
+            SaslState = StateData#state.sasl_state,
+            StepRes = cyrsasl:server_start(SaslState, Mech, ClientIn),
+            handle_sasl_step(StateData, StepRes);
         {?NS_TLS_BIN, <<"starttls">>} when TLS == true,
                                            TLSEnabled == false,
                                            SockMod == gen_tcp ->
@@ -815,41 +782,8 @@ wait_for_sasl_response({xmlstreamelement, El}, StateData) ->
     case {xml:get_attr_s(<<"xmlns">>, Attrs), Name} of
         {?NS_SASL, <<"response">>} ->
             ClientIn = jlib:decode_base64(xml:get_cdata(Els)),
-            case cyrsasl:server_step(StateData#state.sasl_state,
-                                     ClientIn) of
-                {ok, Props} ->
-                    handle_sasl_success(StateData, Props);
-                {ok, Props, ServerOut} ->
-                    handle_sasl_success(StateData, Props, ServerOut);
-                {continue, ServerOut, NewSASLState} ->
-                    send_element(StateData,
-                                 #xmlel{name = <<"challenge">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                        children = [#xmlcdata{content = jlib:encode_base64(ServerOut)}]}),
-                    fsm_next_state(wait_for_sasl_response,
-                                   StateData#state{sasl_state = NewSASLState});
-                {error, Error, Username} ->
-                    IP = peerip(StateData#state.sockmod, StateData#state.socket),
-                    ?INFO_MSG(
-                       "(~w) Failed authentication for ~s@~s from IP ~s (~w)",
-                       [StateData#state.socket,
-                        Username, StateData#state.server, jlib:ip_to_list(IP), IP]),
-                    ejabberd_hooks:run(auth_failed, StateData#state.server,
-                                       [Username, StateData#state.server]),
-                    send_element(StateData,
-                                 #xmlel{name = <<"failure">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                        children = [#xmlel{name = Error}]}),
-                    fsm_next_state(wait_for_feature_request, StateData);
-                {error, Error} ->
-                    ejabberd_hooks:run(auth_failed, StateData#state.server,
-                                       [unknown, StateData#state.server]),
-                    send_element(StateData,
-                                 #xmlel{name = <<"failure">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}],
-                                        children = [#xmlel{name = Error}]}),
-                    fsm_next_state(wait_for_feature_request, StateData)
-            end;
+            StepRes = cyrsasl:server_step(StateData#state.sasl_state, ClientIn),
+            handle_sasl_step(StateData, StepRes);
         _ ->
             process_unauthenticated_stanza(StateData, El),
             fsm_next_state(wait_for_feature_request, StateData)
@@ -865,6 +799,43 @@ wait_for_sasl_response({xmlstreamerror, _}, StateData) ->
     {stop, normal, StateData};
 wait_for_sasl_response(closed, StateData) ->
     {stop, normal, StateData}.
+
+handle_sasl_step(#state{server = Server, socket = Sock} = State, StepRes) ->
+    case StepRes of
+        {ok, Props} ->
+            handle_sasl_success(State, Props);
+        {ok, Props, ServerOut} ->
+            handle_sasl_success(State, Props, ServerOut);
+        {continue, ServerOut, NewSASLState} ->
+            Challenge  = [#xmlcdata{content = jlib:encode_base64(ServerOut)}],
+            send_sasl_challenge_msg(State, Challenge),
+            fsm_next_state(wait_for_sasl_response,
+                           State#state{sasl_state = NewSASLState});
+        {error, Error, Username} ->
+            IP = peerip(State#state.sockmod, Sock),
+            ?INFO_MSG(
+               "(~w) Failed authentication for ~s@~s from IP ~s (~w)",
+               [Sock, Username, Server, jlib:ip_to_list(IP), IP]),
+            ejabberd_hooks:run(auth_failed, Server, [Username, Server]),
+            send_sasl_failure_msg(State, Error),
+            fsm_next_state(wait_for_feature_request, State);
+        {error, Error} ->
+            ejabberd_hooks:run(auth_failed, Server, [unknown, Server]),
+            send_sasl_failure_msg(State, Error),
+            fsm_next_state(wait_for_feature_request, State)
+    end.
+
+send_sasl_challenge_msg(StateData, Challenge) ->
+    send_element(StateData,
+                 #xmlel{name = <<"challenge">>,
+                        attrs = [{<<"xmlns">>, ?NS_SASL}],
+                        children = Challenge}).
+
+send_sasl_failure_msg(StateData, Error) ->
+    send_element(StateData,
+                 #xmlel{name = <<"failure">>,
+                        attrs = [{<<"xmlns">>, ?NS_SASL}],
+                        children = [#xmlel{name = Error}]}).
 
 handle_sasl_success(StateData, Props) ->
     handle_sasl_success(StateData, Props, undefined).
@@ -886,7 +857,7 @@ handle_sasl_success(StateData, Props, ServerOut) ->
 make_sasl_success_stanza(ServerOut) ->
     SubEl = case ServerOut of
                 undefined -> [];
-                Data -> [#xmlcdata{content = jlib:encode_base64(ServerOut)}]
+                _ -> [#xmlcdata{content = jlib:encode_base64(ServerOut)}]
             end,
     #xmlel{name = <<"success">>,
            attrs = [{<<"xmlns">>, ?NS_SASL}],
