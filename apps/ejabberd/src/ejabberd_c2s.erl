@@ -692,21 +692,7 @@ wait_for_feature_request({xmlstreamelement, El}, StateData) ->
                                       Mech,
                                       ClientIn) of
                 {ok, Props} ->
-                    (StateData#state.sockmod):reset_stream(
-                      StateData#state.socket),
-                    send_element(StateData,
-                                 #xmlel{name = <<"success">>,
-                                        attrs = [{<<"xmlns">>, ?NS_SASL}]}),
-                    U = xml:get_attr_s(username, Props),
-                    AuthModule = xml:get_attr_s(auth_module, Props),
-                    ?INFO_MSG("(~w) Accepted authentication for ~s by ~p",
-                              [StateData#state.socket, U, AuthModule]),
-                    fsm_next_state(wait_for_stream,
-                                   StateData#state{
-                                     streamid = new_id(),
-                                     authenticated = true,
-                                     auth_module = AuthModule,
-                                     user = U});
+                    handle_sasl_success(StateData, Props);
                 {continue, ServerOut, NewSASLState} ->
                     send_element(StateData,
                                  #xmlel{name = <<"challenge">>,
@@ -832,41 +818,9 @@ wait_for_sasl_response({xmlstreamelement, El}, StateData) ->
             case cyrsasl:server_step(StateData#state.sasl_state,
                                      ClientIn) of
                 {ok, Props} ->
-                    (StateData#state.sockmod):reset_stream(
-                      StateData#state.socket),
-                    send_element(StateData,
-                                 #xmlel{name = <<"success">>,
-                                        attrs = [{"xmlns", ?NS_SASL}]
-                                       }),
-                    U = xml:get_attr_s(username, Props),
-                    AuthModule = xml:get_attr_s(auth_module, Props),
-                    ?INFO_MSG("(~w) Accepted authentication for ~s by ~p",
-                              [StateData#state.socket, U, AuthModule]),
-                    fsm_next_state(wait_for_stream,
-                                   StateData#state{
-                                     streamid = new_id(),
-                                     authenticated = true,
-                                     auth_module = AuthModule,
-                                     user = U});
+                    handle_sasl_success(StateData, Props);
                 {ok, Props, ServerOut} ->
-                    (StateData#state.sockmod):reset_stream(
-                      StateData#state.socket),
-                    send_element(StateData,
-                                 #xmlel{name = <<"success">>,
-                                        attrs = [{"xmlns", ?NS_SASL}],
-                                        children = [{xmlcdata,
-                                                     jlib:encode_base64(ServerOut)}]}
-                                ),
-                    U = xml:get_attr_s(username, Props),
-                    AuthModule = xml:get_attr_s(auth_module, Props),
-                    ?INFO_MSG("(~w) Accepted authentication for ~s by ~p",
-                              [StateData#state.socket, U, AuthModule]),
-                    fsm_next_state(wait_for_stream,
-                                   StateData#state{
-                                     streamid = new_id(),
-                                     authenticated = true,
-                                     auth_module = AuthModule,
-                                     user = U});
+                    handle_sasl_success(StateData, Props, ServerOut);
                 {continue, ServerOut, NewSASLState} ->
                     send_element(StateData,
                                  #xmlel{name = <<"challenge">>,
@@ -911,6 +865,32 @@ wait_for_sasl_response({xmlstreamerror, _}, StateData) ->
     {stop, normal, StateData};
 wait_for_sasl_response(closed, StateData) ->
     {stop, normal, StateData}.
+
+handle_sasl_success(StateData, Props) ->
+    handle_sasl_success(StateData, Props, undefined).
+handle_sasl_success(StateData, Props, ServerOut) ->
+    (StateData#state.sockmod):reset_stream(StateData#state.socket),
+    SuccessEl = make_sasl_success_stanza(ServerOut),
+    send_element(StateData, SuccessEl),
+    U = xml:get_attr_s(username, Props),
+    AuthModule = xml:get_attr_s(auth_module, Props),
+    ?INFO_MSG("(~w) Accepted authentication for ~s by ~p",
+              [StateData#state.socket, U, AuthModule]),
+    fsm_next_state(wait_for_stream,
+                   StateData#state{
+                     streamid = new_id(),
+                     authenticated = true,
+                     auth_module = AuthModule,
+                     user = U}).
+
+make_sasl_success_stanza(ServerOut) ->
+    SubEl = case ServerOut of
+                undefined -> [];
+                Data -> [#xmlcdata{content = jlib:encode_base64(ServerOut)}]
+            end,
+    #xmlel{name = <<"success">>,
+           attrs = [{<<"xmlns">>, ?NS_SASL}],
+           children = SubEl}.
 
 -spec wait_for_bind_or_resume(Item :: ejabberd:xml_stream_item(),
                               State :: state()) -> fsm_return().
