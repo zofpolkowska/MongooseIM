@@ -34,8 +34,9 @@ setup() ->
                 fun() -> integer_to_list(random:uniform(10000)) end).
 
 teardown() ->
+    meck:unload(randoms),
     meck:unload(ejabberd_config),
     meck:unload(ejabberd_hooks),
     meck:unload(ejabberd_socket),
-    meck:unload(ejabberd_sm),
-    meck:unload(randoms).
+    meck:unload(ejabberd_sm).
+
