@@ -26,6 +26,7 @@
          split/4]).
 
 -include("mod_revproxy.hrl").
+-include("ejabberd.hrl").
 
 -record(state, {timeout, length, custom_headers}).
 
