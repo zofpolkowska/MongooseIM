@@ -105,7 +105,8 @@
 	 {<<"Country">>, <<"c">>}, {<<"City">>, <<"l">>},
 	 {<<"Email">>, <<"mail">>},
 	 {<<"Organization Name">>, <<"o">>},
-	 {<<"Organization Unit">>, <<"ou">>}]).
+	 {<<"Organization Unit">>, <<"ou">>},
+	 {<<"Photo">>, <<"jpegPhoto">>}]).
 
 -define(SEARCH_REPORTED,
 	[{<<"Full Name">>, <<"FN">>},
@@ -118,8 +119,11 @@
 	 {<<"City">>, <<"LOCALITY">>},
 	 {<<"Email">>, <<"EMAIL">>},
 	 {<<"Organization Name">>, <<"ORGNAME">>},
-	 {<<"Organization Unit">>, <<"ORGUNIT">>}]).
+	 {<<"Organization Unit">>, <<"ORGUNIT">>},
+	 {<<"Photo">>, <<"PHOTO">>}
+	]).
 
+-define(BINARY_FIELDS, [<<"PHOTO">>]).
 
 
 %%--------------------------------------------------------------------
@@ -403,7 +407,7 @@ search_items(Entries, State) ->
 							       "@",
 							       LServer/binary>>)]
 						       ++
-						       [?FIELD(Name, Value)
+						       [?FIELD(Name, search_item_value(Name, Value))
 							|| {Name, Value}
 							       <- RFields],
 					    [#xmlel{name = <<"item">>,
@@ -417,6 +421,12 @@ search_items(Entries, State) ->
 			  end
 		  end,
 		  Attributes).
+
+search_item_value(Name, Value) ->
+	case lists:member(Name, ?BINARY_FIELDS) of
+		true -> jlib:encode_base64(Value);
+		false -> Value
+	end.
 
 %%%-----------------------
 %%% Auxiliary functions.
