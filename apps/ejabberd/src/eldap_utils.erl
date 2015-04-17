@@ -164,7 +164,7 @@ make_filter(Data, UIDs) ->
         [F] ->
             F;
         _ ->
-            eldap:'and'(Filter)
+            eldap:'or'(Filter)
     end.
 
 
