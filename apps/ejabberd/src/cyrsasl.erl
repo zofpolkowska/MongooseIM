@@ -42,7 +42,8 @@
                         }).
 -type sasl_module() :: cyrsasl_anonymous
                      | cyrsasl_digest
-                     | cyrsasl_plain.
+                     | cyrsasl_plain
+                     | cyrsasl_oauth.
 -type mechanism() :: binary().
 -type sasl_mechanism() :: #sasl_mechanism{}.
 
@@ -93,6 +94,7 @@ start() ->
     cyrsasl_digest:start([]),
     cyrsasl_scram:start([]),
     cyrsasl_anonymous:start([]),
+    cyrsasl_oauth:start([]),
     ok.
 
 -spec register_mechanism(Mechanism :: mechanism(),
