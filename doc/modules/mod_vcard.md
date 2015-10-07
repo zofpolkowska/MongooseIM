@@ -11,7 +11,7 @@ This module provides support for VCards, as specified in [XEP-0054 (vcard-temp)]
 
 ##### Mnesia & ODBC-specific options
 
-* **allow_return_all (boolean, default: `false`) - Enabling this option allows user to get all directory entries by submitting empty search query.
+* **allow_return_all** (boolean, default: `false`) - Enabling this option allows user to get all directory entries by submitting empty search query.
 
 ##### Mnesia-specific options
 
