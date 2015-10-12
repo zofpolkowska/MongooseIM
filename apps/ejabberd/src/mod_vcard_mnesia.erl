@@ -101,10 +101,12 @@ search_fields(_VHost) ->
      {<<"City">>, <<"locality">>},
      {<<"Email">>, <<"email">>},
      {<<"Organization Name">>, <<"orgname">>},
-	 {<<"Organization Unit">>, <<"orgunit">>}].
+     {<<"Organization Unit">>, <<"orgunit">>}].
+
 %%--------------------------------------------------------------------
 %% internal
 %%--------------------------------------------------------------------
+
 prepare_db() ->
     create_tables(),
     update_tables(),

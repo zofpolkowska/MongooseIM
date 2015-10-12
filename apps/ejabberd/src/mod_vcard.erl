@@ -206,6 +206,7 @@ process_local_iq(_From,_To,#iq{type = get, lang = Lang} = IQ) ->
                                        #xmlel{name = <<"BDAY">>,
                                               children = [#xmlcdata{content = <<"2002-11-16">>}]}
                                       ]}]}.
+
 process_sm_iq(From, To, #iq{type = set, sub_el = VCARD} = IQ) ->
     #jid{user = FromUser, lserver = FromVHost} = From,
     #jid{user = ToUser, lserver = ToVHost, resource = ToResource} = To,
