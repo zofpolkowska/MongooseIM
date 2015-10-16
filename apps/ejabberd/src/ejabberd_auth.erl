@@ -290,7 +290,8 @@ do_try_register_in_backend([], _, _, _) ->
     {error, not_allowed};
 do_try_register_in_backend([M | Backends], LUser, LServer, Password) ->
     case M:try_register(LUser, LServer, Password) of
-        ok ->
+        OK when OK =:= {atomic, ok};
+                OK =:= ok ->
             ejabberd_hooks:run(register_user, LServer,
                 [LUser, LServer]);
         _ ->
