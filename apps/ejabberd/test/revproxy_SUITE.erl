@@ -91,8 +91,13 @@ end_per_group(_GroupName, Config) ->
     Config.
 
 init_per_testcase(http_upstream, Config) ->
-    start_http_upstream(),
-    Config;
+    case can_resolve_domain("qwerty.localhost") of
+        ok ->
+            ok = start_http_upstream(),
+            Config;
+        {error, nxdomain} ->
+            {skip, "add line '127.0.0.1 qwerty.localhost' to /etc/hosts"}
+    end;
 init_per_testcase(https_upstream, Config) ->
     start_https_upstream(Config),
     Config;
@@ -689,3 +694,9 @@ handler_handle(Req, State) ->
 
 handler_terminate(_Reason, _Req, _State) ->
     ok.
+
+can_resolve_domain(Domain) ->
+    case inet:getaddr(Domain, inet) of
+        {error, nxdomain} = E -> E;
+        {ok, _} -> ok
+    end.
