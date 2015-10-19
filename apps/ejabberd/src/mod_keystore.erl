@@ -22,7 +22,7 @@
 -include("ejabberd.hrl").
 -include("mod_keystore.hrl").
 
--define(BACKEND, mod_keystore_backend).
+-define(BACKEND, (mod_keystore_backend:backend())).
 -define(DEFAULT_RAM_KEY_SIZE, 2048).
 -define(iol2b(L), iolist_to_binary(L)).
 
