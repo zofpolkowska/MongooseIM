@@ -97,7 +97,7 @@ init_per_testcase(https_upstream, Config) ->
     start_https_upstream(Config),
     Config;
 init_per_testcase(conf_reload, Config) ->
-    start_http_upstream(),
+    ok = start_http_upstream(),
     Config;
 init_per_testcase(_CaseName, Config) ->
     Config.
@@ -585,10 +585,11 @@ stop_revproxy() ->
 
 start_http_upstream() ->
     Dispatch = cowboy_router:compile([
-                {'_', [{"/[...]", revproxy_handler, []}]}
-                ]),
-    cowboy:start_http(http_listener, 20, [{port, 1234}],
-                      [{env, [{dispatch, Dispatch}]}]).
+                                      {'_', [{"/[...]", revproxy_handler, []}]}
+                                     ]),
+    {ok, _} = cowboy:start_http(http_listener, 20, [{port, 1234}],
+                                [{env, [{dispatch, Dispatch}]}]),
+    ok.
 
 start_https_upstream(Config) ->
     Dispatch = cowboy_router:compile([
