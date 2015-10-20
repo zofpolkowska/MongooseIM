@@ -29,10 +29,23 @@ objectClass: organizationalUnit
 ou: users
 EOL
 
-ldapadd -h ${LDAP_HOST} -p ${LDAP_PORT} -c -x -D cn=admin,dc=esl,dc=com -w ${LDAP_ROOTPASS} \
-	-f ${LDIF_FILE_PATH}
+STATUS=1
+RETRIES=3
+until [ $STATUS -eq 0 ] || [ $RETRIES -eq 0 ]; do
+    sleep 1
+    ldapadd -h ${LDAP_HOST} -p ${LDAP_PORT} -c -x -D cn=admin,dc=esl,dc=com \
+        -w ${LDAP_ROOTPASS} -f ${LDIF_FILE_PATH}
+    STATUS=$?
+    (( RETRIES-- ))
+done
+
+if [ $RETRIES -eq 0 ] && [ $STATUS -ne 0 ]; then
+    echo "LDAP connection retries exceeded"
+    exit 1
+fi
+
 else
 	echo "Container exists, starting"
-	docker start  ${LDAP_CONT_NAME}
+	docker start ${LDAP_CONT_NAME}
 fi
 
