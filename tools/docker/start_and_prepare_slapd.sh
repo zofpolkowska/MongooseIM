@@ -1,10 +1,12 @@
 #!/bin/sh
 
-boot2docker up
-eval "$(boot2docker shellinit)"
+DOCKER_MACHINE="default"
+
+docker-machine start ${DOCKER_MACHINE}
+eval "$(docker-machine env ${DOCKER_MACHINE})"
 
 LDAP_PORT=1389
-LDAP_HOST=`boot2docker ip`
+LDAP_HOST=`docker-machine ip ${DOCKER_MACHINE}`
 LDAP_ROOTPASS="mongoose"
 
 LDAP_CONT_NAME="mongooseim_ldap"
