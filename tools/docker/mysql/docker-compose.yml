@@ -1,0 +1,9 @@
+mongoose_mysql:
+    build: .
+    ports:
+        - "3306:3306"
+    environment:
+        - MYSQL_ROOT_PASSWORD=mongoosepwd
+        - MYSQL_USER=mongoose
+        - MYSQL_PASSWORD=mongoosepwd
+        - MYSQL_DATABASE=mongoose
