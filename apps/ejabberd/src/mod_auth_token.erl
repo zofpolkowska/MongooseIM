@@ -69,7 +69,7 @@
 -define(l2b(L), list_to_binary(L)).
 -define(b2l(B), binary_to_list(B)).
 
--define(BACKEND, mod_auth_token_backend).
+-define(BACKEND, (mod_auth_token_backend:backend())).
 
 %%
 %% gen_mod callbacks
