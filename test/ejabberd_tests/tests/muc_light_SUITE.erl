@@ -20,6 +20,7 @@
 -export([ % occupant
          send_message/1,
          change_subject/1,
+         change_subject_many/1,
          change_roomname/1,
          all_can_configure/1,
          set_config_deny/1,
@@ -101,64 +102,65 @@
 
 all() ->
     [
-     {group, disco},
-     {group, entity},
-     {group, occupant},
-     {group, owner},
-     {group, blocking},
-     {group, limits}
+%%     {group, disco},
+%%     {group, entity},
+     {group, occupant}
+%%     {group, owner},
+%%     {group, blocking},
+%%     {group, limits}
     ].
 
 groups() ->
     [
-        {disco, [sequence],[
-            disco_rooms_created_page_1,
-            disco_rooms_created_page_infinity,
-            disco_rooms_empty_page_infinity,
-            disco_rooms_empty_page_1             %% Doesn't pass !
-        ]},
-     {entity, [sequence], [
-                            disco_service,
-                            disco_features,
-                            disco_rooms,
-                            disco_rooms_rsm,
-                            rooms_in_rosters,
-                            unauthorized_stanza
-                         ]},
-     {occupant, [sequence], [
-                             send_message,
+%%        {disco, [sequence],[
+%%            disco_rooms_created_page_1,
+%%            disco_rooms_created_page_infinity,
+%%            disco_rooms_empty_page_infinity,
+%%            disco_rooms_empty_page_1             %% Doesn't pass !
+%%        ]},
+%%     {entity, [sequence], [
+%%                            disco_service,
+%%                            disco_features,
+%%                            disco_rooms,
+%%                            disco_rooms_rsm,
+%%                            rooms_in_rosters,
+%%                            unauthorized_stanza
+%%                         ]},
+     {occupant, [sequence, {repeat, 10}], [
+%%                             send_message,
                              change_subject,
-                             change_roomname,
-                             all_can_configure,
-                             set_config_deny,
-                             get_room_config,
-                             get_room_occupants,
-                             get_room_info,
-                             leave_room,
-                             change_other_aff_deny
-                            ]},
-     {owner, [sequence], [
-                          create_room,
-                          create_room_unique,
-                          create_room_with_equal_occupants,
-                          create_existing_room_deny,
-                          destroy_room,
-                          set_config,
-                          remove_and_add_users,
-                          explicit_owner_change,
-                          implicit_owner_change,
-                          edge_case_owner_change
-                         ]},
-     {limits, [sequence], [
-                           rooms_per_user,
-                           max_occupants
-                          ]},
-     {blocking, [sequence], [
-                             manage_blocklist,
-                             block_room,
-                             block_user,
-                             blocking_disabled
+                             change_subject_many
+%%                             change_roomname,
+%%                             all_can_configure,
+%%                             set_config_deny,
+%%                             get_room_config,
+%%                             get_room_occupants,
+%%                             get_room_info,
+%%                             leave_room,
+%%                             change_other_aff_deny
                             ]}
+%%     {owner, [sequence], [
+%%                          create_room,
+%%                          create_room_unique,
+%%                          create_room_with_equal_occupants,
+%%                          create_existing_room_deny,
+%%                          destroy_room,
+%%                          set_config,
+%%                          remove_and_add_users,
+%%                          explicit_owner_change,
+%%                          implicit_owner_change,
+%%                          edge_case_owner_change
+%%                         ]},
+%%     {limits, [sequence], [
+%%                           rooms_per_user,
+%%                           max_occupants
+%%                          ]},
+%%     {blocking, [sequence], [
+%%                             manage_blocklist,
+%%                             block_room,
+%%                             block_user,
+%%                             blocking_disabled
+%%                            ]}
     ].
 
 suite() ->
@@ -367,6 +369,30 @@ change_subject(Config) ->
             Stanza = stanza_config_set(?ROOM, ConfigChange),
             foreach_occupant([Alice, Bob, Kate], Stanza, config_msg_verify_fun(ConfigChange))
         end).
+
+change_subject_many(Config) ->
+    escalus:story(Config, [{alice, 1}, {bob, 1}, {kate, 1}], fun(Alice, _Bob, _Kate) ->
+        Subjects = [<<"lunch">>, <<"brexit">>, <<"soccer">>, <<"123-123">>, <<"ASDCXCVDFG-!@#!@##@$23@#$">>, <<"empty room">>],
+        Roomnames = [<<"dark cave">>, <<"shire">>, <<"isengard">>, <<"mordor">>, <<"rohan">>, <<"minas tirith">>],
+        repeat(6, fun muc_helper:foreach_occupant/3, [Alice], Subjects, Roomnames),
+        StanzaCheck = stanza_config_get(?ROOM, ver(1)),
+        escalus:send(Alice, StanzaCheck),
+        Res = escalus:wait_for_stanza(Alice),
+        ElementsRoomname = exml_query:paths(Res, [{element, <<"query">>}, {element, <<"roomname">>}]),
+        ElementsSubject = exml_query:paths(Res, [{element, <<"query">>}, {element, <<"subject">>}]),
+        1 = length(ElementsRoomname),
+        1 = length(ElementsSubject)
+     end).
+
+
+repeat(Times, Fun, Arg1, [Sub | SubTail], [RN | RNTail]) when Times > 0 ->
+    ConfigChange = [{<<"subject">>, Sub}, {<<"roomname">>, RN}],
+    Confirm = config_msg_verify_fun(ConfigChange),
+    Stanza = stanza_config_set(?ROOM, ConfigChange),
+    Fun(Arg1, Stanza, Confirm),
+    repeat(Times - 1, Fun, Arg1, SubTail, RNTail);
+repeat(_Times, _Fun, _, _, _) ->
+    ok.
 
 change_roomname(Config) ->
     escalus:story(Config, [{alice, 1}], fun(Alice) ->
