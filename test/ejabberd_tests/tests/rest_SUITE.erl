@@ -19,6 +19,7 @@
 
 -include_lib("escalus/include/escalus.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -import(rest_helper,
         [
@@ -68,6 +69,7 @@ test_cases() ->
      session_can_be_kicked,
      messages_are_sent_and_received,
      messages_are_archived,
+     archive_and_paginate,
      password_can_be_changed
      ].
 
@@ -166,7 +168,7 @@ end_per_group(_GroupName, Config) ->
     escalus:delete_users(Config, escalus:get_users([alice, bob, mike])).
 
 init_per_testcase(CaseName, Config) ->
-    MAMTestCases = [messages_are_archived],
+    MAMTestCases = [messages_are_archived, archive_and_paginate],
     maybe_skip_mam_test_cases(lists:member(CaseName, MAMTestCases), CaseName, Config).
 
 maybe_skip_mam_test_cases(false, CaseName, Config) ->
@@ -206,7 +208,6 @@ user_can_be_registered_and_removed(_Config) ->
     {?OK, Lusers2} = gett(<<"/users/localhost">>),
     assert_notinlist(<<"mike@localhost">>, Lusers2),
     ok.
-
 
 sessions_are_listed(_) ->
     % no session
@@ -248,7 +249,7 @@ messages_are_archived(Config) ->
         AliceJID = maps:get(to, M1),
         BobJID = maps:get(caller, M1),
         GetPath = lists:flatten(["/messages/",binary_to_list(AliceJID),
-                                 "/",binary_to_list(BobJID),"/10"]),
+                                 "/",binary_to_list(BobJID),"0/10"]),
         mam_helper:maybe_wait_for_yz(Config),
         {?OK, Msgs} = gett(GetPath),
         ?PRT("Msgs", Msgs),
@@ -259,6 +260,47 @@ messages_are_archived(Config) ->
         AliceJID = maps:get(sender, Last),
         <<"hello from Bob">> = maps:get(body, Previous),
         BobJID = maps:get(sender, Previous)
+    end).
+
+send_and_wait(AliceJID, BobJID, Msg) ->
+    M = #{caller => BobJID, to => AliceJID, msg => Msg},
+    {?OK, _} = post(<<"/messages">>, M),
+    M1 = #{caller => AliceJID, to => BobJID, msg => Msg},
+    {?OK, _} = post(<<"/messages">>, M1),
+    timer:sleep(2000).
+
+get_messages(Me, Other, Before, Count) ->
+    GetPath = lists:flatten(["/messages/",binary_to_list(Me),
+        "/",binary_to_list(Other),"/", integer_to_list(Before), "/", integer_to_list(Count)]),
+    {?OK, Msgs} = gett(GetPath),
+    Msgs.
+
+archive_and_paginate(Config) ->
+    escalus:fresh_story(Config, [{alice, 1}, {bob, 1}], fun(Alice, Bob) ->
+        % send messages both ways in two-second intervals, three times, wait two more seconds
+        AliceJID = escalus_utils:jid_to_lower(escalus_client:short_jid(Alice)),
+        BobJID = escalus_utils:jid_to_lower(escalus_client:short_jid(Bob)),
+        send_and_wait(AliceJID, BobJID, <<"A">>),
+        send_and_wait(AliceJID, BobJID, <<"B">>),
+        send_and_wait(AliceJID, BobJID, <<"C">>),
+        % recent msgs with a limit
+        M1 = get_messages(AliceJID, BobJID, 0, 10),
+        ?assertEqual(length(M1), 6),
+        M2 = get_messages(AliceJID, BobJID, 0, 3),
+        ?assertEqual(length(M2), 3),
+        {MegaSecs, Secs, _} = now(),
+        Now = MegaSecs * 1000000 + Secs,
+        % older messages
+        M3 = get_messages(AliceJID, BobJID, Now - 3, 10),
+        ?assertEqual(length(M3), 4),
+        [Oldest|_] = decode_maplist(M3),
+        ?assertEqual(maps:get(body, Oldest), <<"A">>),
+        % same with limit
+        M4 = get_messages(AliceJID, BobJID, Now - 3, 2),
+        ?assertEqual(length(M4), 2),
+        [Oldest2|_] = decode_maplist(M4),
+        ?assertEqual(maps:get(body, Oldest2), <<"B">>),
+        ok
     end).
 
 password_can_be_changed(Config) ->
