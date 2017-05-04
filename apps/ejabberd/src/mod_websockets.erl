@@ -76,7 +76,7 @@ terminate(_Reason, _Req, _State) ->
 % Called for every new websocket connection.
 websocket_init(Transport, Req, Opts) ->
     ?DEBUG("websocket_init: ~p~n", [{Transport, Req, Opts}]),
-    Req1 = cowboy_req:set_resp_header(<<"Sec-WebSocket-Protocol">>, <<"xmpp">>, Req),
+    Req1 = add_sec_websocket_protocol_header(Req),
             Timeout = gen_mod:get_opt(timeout, Opts, infinity),
             PingRate = gen_mod:get_opt(ping_rate, Opts, none),
             ?DEBUG("ping rate is ~p", [PingRate]),
@@ -329,3 +329,35 @@ maybe_send_ping_request(none) ->
     ok;
 maybe_send_ping_request(PingRate) ->
     send_ping_request(PingRate).
+
+
+
+add_sec_websocket_protocol_header(Req) ->
+    case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
+        {undefined, Req1} ->
+            %% Server should not set "sec-websocket-protocol" respond header
+            %% if it does not present in the request
+            Req1;
+        {Proto, Req1} ->
+            %% A client can propose several protocols
+            %% but we are interested in xmpp only
+            Protocols = split_protocol(Proto),
+            case lists:member(<<"xmpp">>, Protocols) of
+                true ->
+                    cowboy_req:set_resp_header(<<"Sec-WebSocket-Protocol">>, <<"xmpp">>, Req1);
+                false ->
+                    %% Do not agree with client, do not add a respond header
+                    ?DEBUG("issue=not_supported_procol, protocol=~p", [Proto]),
+                    Req1
+            end
+    end.
+
+split_protocol(Proto) ->
+	%% whitespace and comma can be used as separators
+    map_tolower(skip_empty(binary:split(Proto, [<<" ">>, <<",">>], [global]))).
+
+skip_empty(List) ->
+    [X || X <- List, X =/= <<>>].
+
+map_tolower(List) ->
+    [stringprep:tolower(X) || X <- List].
