@@ -16,7 +16,7 @@ So let's get to it, shall we?
 ### Overall component architecture
 
 The components that make push notifications possible in MongooseIM add up to the following architecture:
-![](push_notifications_components.svg)
+![](PushNotificationscomponents.png)
 
 The diagram lists three domains in total - two for MongooseIM and one for [MongoosePush][]. Note that this separation is not required, all three components can be on the same host with the same domain. 
 
@@ -129,7 +129,7 @@ When your [MongoosePush][] docker is up and running, Push Notifications can be u
 
 There are just a few things the XMPP client application needs to receive the push notifications.
 See the diagram to examine the process described in this section along with the example notification flow:
- ![](push_notifications_example_message_flow.svg)
+ ![](push_notifications_example_message_flow.png)
 
 ### Registering with a Push Service provider
 
