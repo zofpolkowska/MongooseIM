@@ -120,7 +120,8 @@ listmech(Host) ->
                              scram ->
                                  [{'/=', '$2', digest}];
                              {'EXIT', {undef, [{Module, store_type, []} | _]}} ->
-                                 ?WARNING_MSG("~p doesn't implement the function store_type/0", [Module]),
+                                 ?WARNING_MSG("~p doesn't implement the function
+                                               store_type/0", [Module]),
                                  [];
                              _Else ->
                                  []

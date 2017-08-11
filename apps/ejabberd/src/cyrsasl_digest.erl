@@ -98,7 +98,6 @@ authorize_if_uri_valid(State, KeyVals, Nonce) ->
       "seems invalid: ~p", [DigestURI]),
       {error, <<"not-authorized">>, UserName};
     true ->
-
       maybe_authorize(UserName, KeyVals, Nonce, State#state.creds)
   end.
 
@@ -117,27 +116,24 @@ maybe_authorize(UserName, KeyVals, Nonce, State) ->
           {password, <<>>},
           {digest, xml:get_attr_s(<<"response">>, KeyVals)},
           {digest_gen, DigestGen}]),
-      authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule)
-  end.
-
-authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule) ->
-  case ejabberd_auth:authorize(Request) of
-    {ok, Result} ->
-      RspAuth = response(KeyVals,
-        UserName, Passwd,
-        Nonce, AuthzId, <<>>),
-      {continue,
-        list_to_binary([<<"rspauth=">>, RspAuth]),
-        State#state{step = 5,
-          auth_module = AuthModule,
-          username = UserName,
-          authzid = AuthzId,
-          creds = Result}};
-    {error, not_authorized} ->
-      {error, <<"not-authorized">>, UserName};
-    {error, R} ->
-      ?DEBUG("authorize error: ~p", [R]),
-      {error, <<"not-authorized">>}
+      case ejabberd_auth:authorize(Request) of
+        {ok, Result} ->
+          RspAuth = response(KeyVals,
+            UserName, Passwd,
+            Nonce, AuthzId, <<>>),
+          {continue,
+            list_to_binary([<<"rspauth=">>, RspAuth]),
+            State#state{step = 5,
+              auth_module = AuthModule,
+              username = UserName,
+              authzid = AuthzId,
+              creds = Result}};
+        {error, not_authorized} ->
+          {error, <<"not-authorized">>, UserName};
+        {error, R} ->
+          ?DEBUG("authorize error: ~p", [R]),
+          {error, <<"not-authorized">>}
+      end
   end.
 
 -spec parse(binary()) -> 'bad' | [{binary(), binary()}].
