@@ -74,46 +74,7 @@ mech_step(#state{step = 3, nonce = Nonce} = State, ClientIn) ->
         KeyVals ->
             DigestURI = xml:get_attr_s(<<"digest-uri">>, KeyVals),
             UserName = xml:get_attr_s(<<"username">>, KeyVals),
-            case is_digesturi_valid(DigestURI, State#state.host) of
-                false ->
-                    ?DEBUG("User login not authorized because digest-uri "
-                           "seems invalid: ~p", [DigestURI]),
-                    {error, <<"not-authorized">>, UserName};
-                true ->
-                    AuthzId = xml:get_attr_s(<<"authzid">>, KeyVals),
-                    LServer = mongoose_credentials:lserver(State#state.creds),
-                    case ejabberd_auth:get_password_with_authmodule(UserName, LServer) of
-                        {false, _} ->
-                            {error, <<"not-authorized">>, UserName};
-                        {Passwd, AuthModule} ->
-                            DigestGen = fun(PW) -> response(KeyVals, UserName, PW, Nonce, AuthzId,
-                                                            <<"AUTHENTICATE">>)
-                                        end,
-                            Request = mongoose_credentials:extend(State#state.creds,
-                                                                  [{username, UserName},
-                                                                   {password, <<>>},
-                                                                   {digest, xml:get_attr_s(<<"response">>, KeyVals)},
-                                                                   {digest_gen, DigestGen}]),
-                            case ejabberd_auth:authorize(Request) of
-                                {ok, Result} ->
-                                    RspAuth = response(KeyVals,
-                                                       UserName, Passwd,
-                                                       Nonce, AuthzId, <<>>),
-                                    {continue,
-                                     list_to_binary([<<"rspauth=">>, RspAuth]),
-                                     State#state{step = 5,
-                                                 auth_module = AuthModule,
-                                                 username = UserName,
-                                                 authzid = AuthzId,
-                                                 creds = Result}};
-                                {error, not_authorized} ->
-                                    {error, <<"not-authorized">>, UserName};
-                                {error, R} ->
-                                    ?DEBUG("authorize error: ~p", [R]),
-                                    {error, <<"not-authorized">>}
-                            end
-                    end
-            end
+            authorize_if_uri_valid(DigestURI, State, UserName, KeyVals, Nonce)
     end;
 mech_step(#state{step = 5,
                  auth_module = AuthModule,
@@ -126,6 +87,53 @@ mech_step(#state{step = 5,
 mech_step(A, B) ->
     ?DEBUG("SASL DIGEST: A ~p B ~p", [A, B]),
     {error, <<"bad-protocol">>}.
+
+
+authorize_if_uri_valid(DigestURI, State, UserName, KeyVals, Nonce) ->
+  case is_digesturi_valid(DigestURI, State#state.host) of
+    false ->
+      ?DEBUG("User login not authorized because digest-uri "
+      "seems invalid: ~p", [DigestURI]),
+      {error, <<"not-authorized">>, UserName};
+    true ->
+      AuthzId = xml:get_attr_s(<<"authzid">>, KeyVals),
+      LServer = mongoose_credentials:lserver(State#state.creds),
+      case ejabberd_auth:get_password_with_authmodule(UserName, LServer) of
+        {false, _} ->
+          {error, <<"not-authorized">>, UserName};
+        {Passwd, AuthModule} ->
+          DigestGen = fun(PW) -> response(KeyVals, UserName, PW, Nonce, AuthzId,
+            <<"AUTHENTICATE">>)
+                      end,
+          Request = mongoose_credentials:extend(State#state.creds,
+            [{username, UserName},
+              {password, <<>>},
+              {digest, xml:get_attr_s(<<"response">>, KeyVals)},
+              {digest_gen, DigestGen}]),
+          authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule)
+      end
+  end.
+
+
+authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule) ->
+  case ejabberd_auth:authorize(Request) of
+    {ok, Result} ->
+      RspAuth = response(KeyVals,
+        UserName, Passwd,
+        Nonce, AuthzId, <<>>),
+      {continue,
+        list_to_binary([<<"rspauth=">>, RspAuth]),
+        State#state{step = 5,
+          auth_module = AuthModule,
+          username = UserName,
+          authzid = AuthzId,
+          creds = Result}};
+    {error, not_authorized} ->
+      {error, <<"not-authorized">>, UserName};
+    {error, R} ->
+      ?DEBUG("authorize error: ~p", [R]),
+      {error, <<"not-authorized">>}
+  end.
 
 
 -spec parse(binary()) -> 'bad' | [{binary(), binary()}].
