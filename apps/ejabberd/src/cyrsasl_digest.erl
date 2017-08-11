@@ -45,6 +45,8 @@
                 creds :: mongoose_credentials:t()
               }).
 
+-type state() :: #state{}.
+
 start(_Opts) ->
     mongoose_fips:maybe_register_mech(<<"DIGEST-MD5">>, ?MODULE, digest).
 
@@ -52,7 +54,7 @@ stop() ->
     ok.
 
 -spec mech_new(Host :: ejabberd:server(),
-               Creds :: mongoose_credentials:t()) -> {ok, #state{}}.
+               Creds :: mongoose_credentials:t()) -> {ok, state()}.
 mech_new(Host, Creds) ->
     {ok, #state{step = 1,
                 nonce = randoms:get_string(),
@@ -72,9 +74,7 @@ mech_step(#state{step = 3, nonce = Nonce} = State, ClientIn) ->
         bad ->
             {error, <<"bad-protocol">>};
         KeyVals ->
-            DigestURI = xml:get_attr_s(<<"digest-uri">>, KeyVals),
-            UserName = xml:get_attr_s(<<"username">>, KeyVals),
-            authorize_if_uri_valid(DigestURI, State, UserName, KeyVals, Nonce)
+            authorize_if_uri_valid(State, KeyVals, Nonce)
     end;
 mech_step(#state{step = 5,
                  auth_module = AuthModule,
@@ -89,31 +89,36 @@ mech_step(A, B) ->
     {error, <<"bad-protocol">>}.
 
 
-authorize_if_uri_valid(DigestURI, State, UserName, KeyVals, Nonce) ->
+authorize_if_uri_valid(State, KeyVals, Nonce) ->
+  UserName = xml:get_attr_s(<<"username">>, KeyVals),
+  DigestURI = xml:get_attr_s(<<"digest-uri">>, KeyVals),
   case is_digesturi_valid(DigestURI, State#state.host) of
     false ->
       ?DEBUG("User login not authorized because digest-uri "
       "seems invalid: ~p", [DigestURI]),
       {error, <<"not-authorized">>, UserName};
     true ->
-      AuthzId = xml:get_attr_s(<<"authzid">>, KeyVals),
-      LServer = mongoose_credentials:lserver(State#state.creds),
-      case ejabberd_auth:get_password_with_authmodule(UserName, LServer) of
-        {false, _} ->
-          {error, <<"not-authorized">>, UserName};
-        {Passwd, AuthModule} ->
-          DigestGen = fun(PW) -> response(KeyVals, UserName, PW, Nonce, AuthzId,
-            <<"AUTHENTICATE">>)
-                      end,
-          Request = mongoose_credentials:extend(State#state.creds,
-            [{username, UserName},
-              {password, <<>>},
-              {digest, xml:get_attr_s(<<"response">>, KeyVals)},
-              {digest_gen, DigestGen}]),
-          authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule)
-      end
+
+      maybe_authorize(UserName, KeyVals, Nonce, State#state.creds)
   end.
 
+maybe_authorize(UserName, KeyVals, Nonce, State) ->
+  AuthzId = xml:get_attr_s(<<"authzid">>, KeyVals),
+  LServer = mongoose_credentials:lserver(State#state.creds),
+  case ejabberd_auth:get_password_with_authmodule(UserName, LServer) of
+    {false, _} ->
+      {error, <<"not-authorized">>, UserName};
+    {Passwd, AuthModule} ->
+      DigestGen = fun(PW) -> response(KeyVals, UserName, PW, Nonce, AuthzId,
+        <<"AUTHENTICATE">>)
+                  end,
+      Request = mongoose_credentials:extend(State#state.creds,
+        [{username, UserName},
+          {password, <<>>},
+          {digest, xml:get_attr_s(<<"response">>, KeyVals)},
+          {digest_gen, DigestGen}]),
+      authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule)
+  end.
 
 authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule) ->
   case ejabberd_auth:authorize(Request) of
@@ -134,7 +139,6 @@ authorize(Request, KeyVals, UserName, Passwd, Nonce, AuthzId, State, AuthModule)
       ?DEBUG("authorize error: ~p", [R]),
       {error, <<"not-authorized">>}
   end.
-
 
 -spec parse(binary()) -> 'bad' | [{binary(), binary()}].
 parse(S) ->
