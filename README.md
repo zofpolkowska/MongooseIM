@@ -39,7 +39,7 @@ Check out our test results:
 
 ## MongooseIM platform components
 
-<img src="/doc/MongooseIMPlatformcomponents.png " alt="MongooseIM platform schema" />
+<img src="/doc/MongooseIM_Platform_components.png " alt="MongooseIM platform schema" />
 
 ### Server-side components
 
