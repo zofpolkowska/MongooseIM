@@ -87,8 +87,7 @@ new() ->
 
 -spec from_kv(atom(), any()) -> t().
 from_kv(K, V) ->
-    M = maps:put(K, V, #{}),
-    maps:put(mongoose_acc, true, M).
+    maps:put(K, V, new()).
 
 %% @doc This one has an alternative form because normally an acc carries an xml element, as
 %% received from client, but sometimes messages are generated internally (broadcast) by sm
@@ -117,7 +116,7 @@ from_element(El, From, To) ->
 
 -spec from_map(map()) -> t().
 from_map(M) ->
-    maps:put(mongoose_acc, true, M).
+    maps:merge(new(), M).
 
 -spec update(t(), map() | t()) -> t().
 update(Acc, M) ->
