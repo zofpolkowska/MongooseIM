@@ -276,7 +276,7 @@ check_password_cache(LUser, LServer, Password, CacheTime) ->
             check_password_external_cache(LUser, LServer, Password);
         TimeStamp ->
             %% If last access exists, compare last access with cache refresh time
-            case is_fresh_enough(TimeStamp, CacheTime) of
+                case is_fresh_enough(TimeStamp, CacheTime) of
                 %% If no need to refresh, check password against Mnesia
                 true ->
                     check_caches(LUser, LServer, Password);
@@ -378,8 +378,11 @@ get_last_access(User, Server) ->
                     mod_last_required;
                 not_found ->
                     never;
+                %% keep backward compatiblity
                 {ok, Timestamp, _Status} ->
-                    Timestamp
+                    Timestamp;
+                {ok, utc, UTCTime, _Status} ->
+                    UTCTime
             end;
         _ ->
             online

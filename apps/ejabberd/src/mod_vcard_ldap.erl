@@ -236,7 +236,7 @@ find_ldap_user(User, State) ->
     EldapID = State#state.eldap_id,
     VCardAttrs = State#state.vcard_map_attrs,
     case eldap_filter:parse(RFC2254Filter, [{<<"%u">>, User}]) of
-      {ok, EldapFilter} ->
+      {ok, EldapFilter} ->w
           case eldap_pool:search(EldapID,
                                  [{base, Base}, {filter, EldapFilter},
                                   {deref_aliases, State#state.deref_aliases},

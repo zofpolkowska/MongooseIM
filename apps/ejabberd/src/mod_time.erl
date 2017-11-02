@@ -7,7 +7,7 @@
 -module(mod_time).
 -author('ludwik.bukowski@erlang-solutions.com').
 -behaviour(gen_mod).
--export([start/2, stop/1, process_local_iq/4]).
+-export([start/2, stop/1, process_local_iq/4, calculate_time/1]).
 -include("ejabberd.hrl").
 -include("jlib.hrl").
 -xep([{xep, 202}, {version, "2.0"}]).
@@ -43,20 +43,24 @@ process_local_iq(_From, _To, Acc, #iq{type = get} = IQ) ->
                           [#xmlcdata{content = UTC}]}]}]},
     {Acc, R}.
 
-%% Internals
+%% Time format due to XEP-202
 calculate_time() ->
     Now = p1_time_compat:timestamp(),
-    NowUniversal = calendar:now_to_universal_time(Now),
-    NowLocal = calendar:now_to_local_time(Now),
-    {UTCTime, UTCDiff} = jlib:timestamp_to_iso(NowUniversal, utc),
-    UTC = list_to_binary(UTCTime ++ UTCDiff),
-    SecondsDiff = difference_in_secs(NowLocal, NowUniversal),
-    {Hd, Md, _} = calendar:seconds_to_time(abs(SecondsDiff)),
-    {_, TZODiff} = jlib:timestamp_to_iso({{2000, 1, 1},
-                                          {0, 0, 0}},
-                                         {sign(SecondsDiff), {Hd, Md}}),
-    {UTC, TZODiff}.
+    calculate_time(Now).
 
+calculate_time(Now) ->
+  NowUniversal = calendar:now_to_universal_time(Now),
+  NowLocal = calendar:now_to_local_time(Now),
+  {UTCTime, UTCDiff} = jlib:timestamp_to_iso(NowUniversal, utc),
+  UTC = list_to_binary(UTCTime ++ UTCDiff),
+  SecondsDiff = difference_in_secs(NowLocal, NowUniversal),
+  {Hd, Md, _} = calendar:seconds_to_time(abs(SecondsDiff)),
+  {_, TZODiff} = jlib:timestamp_to_iso({{2000, 1, 1},
+    {0, 0, 0}},
+    {sign(SecondsDiff), {Hd, Md}}),
+  {UTC, TZODiff}.
+
+%% Internals
 difference_in_secs(LocalTime, UniversalTime) ->
     LocalSeconds = calendar:datetime_to_gregorian_seconds(LocalTime),
     UniversalSeconds = calendar:datetime_to_gregorian_seconds(UniversalTime),
