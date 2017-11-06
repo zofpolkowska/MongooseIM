@@ -229,7 +229,6 @@ wait_for_stop1(MonitorReference) ->
 get_opt(Opt, Opts) ->
     case lists:keysearch(Opt, 1, Opts) of
         false ->
-            % TODO: replace with more appropriate function
             throw({undefined_option, Opt});
         {value, {_, Val}} ->
             Val
