@@ -347,6 +347,7 @@ resend_unacked_on_reconnection(Config) ->
          || Msg <- Messages],
         %% Alice receives the messages.
         Stanzas = escalus:wait_for_stanzas(Alice, length(Messages)),
+        ct:log("stanzas that should be messages ~p~n", [Stanzas]),
         [escalus:assert(is_chat_message, [Msg], Stanza)
          || {Msg, Stanza} <- lists:zip(Messages, Stanzas)],
         %% Alice disconnects without acking the messages.
