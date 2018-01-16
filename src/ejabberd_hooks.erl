@@ -55,7 +55,7 @@
 
 -type hook() :: {atom(), ejabberd:server() | global, module(), fun() | atom(), integer()}.
 
--record(state, {}).
+-record(state, {modules_without_behaviour=[]}).
 
 -export_type([hook/0]).
 
@@ -194,6 +194,7 @@ init([]) ->
 %%----------------------------------------------------------------------
 handle_call({add, Hook, Host, Module, Function, Seq}, _From, State) ->
     check_function_name(Hook, Host, Module, Function, Seq),
+    State2 = check_module_behaviour(Hook, Host, Module, Function, Seq, State),
     Reply = case ets:lookup(hooks, {Hook, Host}) of
                 [{_, Ls}] ->
                     El = {Seq, Module, Function},
@@ -211,7 +212,7 @@ handle_call({add, Hook, Host, Module, Function, Seq}, _From, State) ->
                     mongoose_metrics:create_generic_hook_metric(Host, Hook),
                     ok
             end,
-    {reply, Reply, State};
+    {reply, Reply, State2};
 
 handle_call({delete, Hook, Host, Module, Function, Seq}, _From, State) ->
     Reply = case ets:lookup(hooks, {Hook, Host}) of
@@ -311,3 +312,24 @@ check_function_name(Hook, _Host, Module, Function, _Seq)
 check_function_name(_Hook, _Host, _Module, _Function, _Seq) ->
     ok.
 
+check_module_behaviour(_Hook, _Host, Module, _Function, _Seq,
+                       State=#state{modules_without_behaviour=Modules}) ->
+    try lists:member({behavior,[hook_handler]}, Module:module_info(attributes)) of
+        true ->
+            State;
+        false ->
+            case lists:member(Module, Modules) of
+                true ->
+                    State;
+                false ->
+                    ?WARNING_MSG("issue=hook_handler_behaviour_missing "
+                                 "module=~p ",
+                                 [Module]),
+                    State#state{modules_without_behaviour=[Module|Modules]}
+            end
+        catch Error:Reason ->
+            ?ERROR_MSG("issue=check_module_behaviour_failed "
+                         "module=~p reason=~p:~p",
+                         [Module, Error, Reason]),
+            State
+    end.
