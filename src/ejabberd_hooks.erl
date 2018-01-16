@@ -56,7 +56,7 @@
 -type hook() :: {atom(), ejabberd:server() | global, module(), fun() | atom(), integer()}.
 
 -record(state, {
-          modules_without_behaviour=[],
+          checked_modules=[],
           hooks_without_callback=[]
          }).
 
@@ -197,7 +197,7 @@ init([]) ->
 %%----------------------------------------------------------------------
 handle_call({add, Hook, Host, Module, Function, Seq}, _From, State) ->
     check_function_name(Hook, Host, Module, Function, Seq),
-    State2 = check_module_behaviour(Hook, Host, Module, Function, Seq, State),
+    State2 = check_module(Module, State),
     State3 = check_hook_callback(Hook, Host, Module, Function, Seq, State2),
     Reply = case ets:lookup(hooks, {Hook, Host}) of
                 [{_, Ls}] ->
@@ -318,26 +318,56 @@ check_function_name(_Hook, _Host, _Module, _Function, _Seq) ->
     ok.
 
 %% Check that the caller module has hook_handler behaviour
-check_module_behaviour(_Hook, _Host, Module, _Function, _Seq,
-                       State=#state{modules_without_behaviour=Modules}) ->
-    try lists:member({behavior,[hook_handler]}, Module:module_info(attributes)) of
+check_module(Module, State=#state{checked_modules=Modules}) ->
+    case lists:member(Module, Modules) of
         true ->
             State;
         false ->
-            case lists:member(Module, Modules) of
-                true ->
-                    State; %% already reported
-                false ->
-                    ?WARNING_MSG("issue=hook_handler_behaviour_missing "
-                                 "module=~p ",
-                                 [Module]),
-                    State#state{modules_without_behaviour=[Module|Modules]}
-            end
+            check_module_behaviour(Module),
+            check_function_name_conflicts(Module),
+            State#state{checked_modules=[Module|Modules]}
+    end.
+
+check_module_behaviour(Module) ->
+    try lists:member({behavior,[hook_handler]}, Module:module_info(attributes)) of
+        true ->
+            ok;
+        false ->
+            ?WARNING_MSG("issue=hook_handler_behaviour_missing "
+                         "module=~p ",
+                         [Module])
         catch Error:Reason ->
             ?ERROR_MSG("issue=check_module_behaviour_failed "
                          "module=~p reason=~p:~p",
-                         [Module, Error, Reason]),
-            State
+                         [Module, Error, Reason])
+    end,
+    ok.
+
+check_function_name_conflicts(Module) ->
+    try
+        Exports = Module:module_info(exports),
+        AllCallbacks = hook_handler:behaviour_info(callbacks),
+        lists:foreach(fun({Function, Arity}) ->
+                checked_function_name_conflict(Module, Function, Arity, AllCallbacks)
+              end, Exports)
+        catch Error:Reason ->
+            ?ERROR_MSG("issue=checked_function_name_conflicts_failed "
+                         "module=~p reason=~p:~p",
+                         [Module, Error, Reason])
+    end,
+    ok.
+
+checked_function_name_conflict(Module, Function, Arity, AllCallbacks) ->
+    Conflict = lists:keymember(Function, 1, AllCallbacks),
+    Allowed = lists:member({Function, Arity}, AllCallbacks),
+    case {Conflict, Allowed} of
+        {true, false} ->
+            %% The function should be renamed, if it's not a hook handler.
+            %% If it's a hook handler - most likely it's broken.
+            ?WARNING_MSG("issue=confusing_function_name function=~p:~p/~p",
+                         [Module, Function, Arity]);
+        _ ->
+            ok
     end.
 
 %% Check that hook has callback defined inside hook_handler module
@@ -351,6 +381,10 @@ check_hook_callback(Hook, Host, Module, Function, Seq,
                 true ->
                     State; %% already reported
                 false ->
+                    %% Add missing callback definition into hook_handlers.
+                    %% Use Module as a reference point.
+                    ?WARNING_MSG("issue=missing_hook_callback hook=~p module=~p",
+                                 [Hook, Module]),
                     State#state{hooks_without_callback=[Hook|Hooks]}
             end;
         [{Hook, Arity}] ->
