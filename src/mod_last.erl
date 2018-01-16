@@ -30,6 +30,7 @@
 -xep([{xep, 12}, {version, "2.0"}]).
 
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 
 -export([
          start/2,

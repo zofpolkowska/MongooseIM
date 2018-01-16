@@ -36,6 +36,7 @@
 -xep([{xep, 54}, {version, "1.2"}]).
 -xep([{xep, 55}, {version, "1.3"}]).
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 -behaviour(gen_server).
 
 -include("ejabberd.hrl").

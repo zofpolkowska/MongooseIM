@@ -7,6 +7,7 @@
 %%% Created : 20. Jul 2016 10:16
 %%%-------------------------------------------------------------------
 -module(mongoose_api_common).
+-behaviour(hook_handler).
 -author("ludwikbukowski").
 -include("mongoose_api.hrl").
 -include("ejabberd.hrl").

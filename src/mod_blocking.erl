@@ -10,6 +10,7 @@
 
 -xep([{xep, 191}, {version, "1.2"}]).
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 -export([start/2,
          process_iq_get/5,
          process_iq_set/4,

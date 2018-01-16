@@ -1,6 +1,7 @@
 -module(amp_resolver).
 %% @doc This module is responsible for checking whether particular AMP semantics
 %%      apply for a given message.
+-behaviour(hook_handler).
 
 -export([check_condition/3,
          verify_support/2

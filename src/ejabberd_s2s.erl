@@ -31,6 +31,7 @@
 
 -behaviour(gen_server).
 -behaviour(xmpp_router).
+-behaviour(hook_handler).
 
 %% API
 -export([start_link/0,

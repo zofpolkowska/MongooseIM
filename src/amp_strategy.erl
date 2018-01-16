@@ -7,6 +7,7 @@
 %% This work was sponsored by Grindr LLC
 -export([determine_strategy/5,
          null_strategy/0]).
+-behaviour(hook_handler).
 
 -include("amp.hrl").
 -include("ejabberd.hrl").

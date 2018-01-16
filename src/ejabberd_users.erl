@@ -1,5 +1,7 @@
 %%% @doc Stores info about non-anonymous users using Mnesia table.
 -module(ejabberd_users).
+-behaviour(hook_handler).
+
 %% API
 -export([start/1,
          stop/1,

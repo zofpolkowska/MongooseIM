@@ -55,7 +55,10 @@
 
 -type hook() :: {atom(), ejabberd:server() | global, module(), fun() | atom(), integer()}.
 
--record(state, {modules_without_behaviour=[]}).
+-record(state, {
+          modules_without_behaviour=[],
+          hooks_without_callback=[]
+         }).
 
 -export_type([hook/0]).
 
@@ -195,6 +198,7 @@ init([]) ->
 handle_call({add, Hook, Host, Module, Function, Seq}, _From, State) ->
     check_function_name(Hook, Host, Module, Function, Seq),
     State2 = check_module_behaviour(Hook, Host, Module, Function, Seq, State),
+    State3 = check_hook_callback(Hook, Host, Module, Function, Seq, State2),
     Reply = case ets:lookup(hooks, {Hook, Host}) of
                 [{_, Ls}] ->
                     El = {Seq, Module, Function},
@@ -212,7 +216,7 @@ handle_call({add, Hook, Host, Module, Function, Seq}, _From, State) ->
                     mongoose_metrics:create_generic_hook_metric(Host, Hook),
                     ok
             end,
-    {reply, Reply, State2};
+    {reply, Reply, State3};
 
 handle_call({delete, Hook, Host, Module, Function, Seq}, _From, State) ->
     Reply = case ets:lookup(hooks, {Hook, Host}) of
@@ -301,6 +305,7 @@ record(_Hook, _Module, _Function, Acc) ->
 %%    end.
 
 
+%% Check that function name is the same as hook name
 check_function_name(Hook, _Host, Module, Function, _Seq)
   when is_atom(Function), Hook =/= Function ->
     %% Hook and Function should be the same
@@ -312,6 +317,7 @@ check_function_name(Hook, _Host, Module, Function, _Seq)
 check_function_name(_Hook, _Host, _Module, _Function, _Seq) ->
     ok.
 
+%% Check that the caller module has hook_handler behaviour
 check_module_behaviour(_Hook, _Host, Module, _Function, _Seq,
                        State=#state{modules_without_behaviour=Modules}) ->
     try lists:member({behavior,[hook_handler]}, Module:module_info(attributes)) of
@@ -320,7 +326,7 @@ check_module_behaviour(_Hook, _Host, Module, _Function, _Seq,
         false ->
             case lists:member(Module, Modules) of
                 true ->
-                    State;
+                    State; %% already reported
                 false ->
                     ?WARNING_MSG("issue=hook_handler_behaviour_missing "
                                  "module=~p ",
@@ -332,4 +338,43 @@ check_module_behaviour(_Hook, _Host, Module, _Function, _Seq,
                          "module=~p reason=~p:~p",
                          [Module, Error, Reason]),
             State
+    end.
+
+%% Check that hook has callback defined inside hook_handler module
+check_hook_callback(Hook, Host, Module, Function, Seq,
+                    State=#state{hooks_without_callback=Hooks}) ->
+    AllCallbacks = hook_handler:behaviour_info(callbacks),
+    MatchedCallbacks = [{H, A} || {H, A} <- AllCallbacks, H =:= Hook],
+    case MatchedCallbacks of
+        [] ->
+            case lists:member(Hook, Hooks) of
+                true ->
+                    State; %% already reported
+                false ->
+                    State#state{hooks_without_callback=[Hook|Hooks]}
+            end;
+        [{Hook, Arity}] ->
+            check_hanlder_arity(Arity, Hook, Host, Module, Function, Seq),
+            State;
+        _ ->
+            ?ERROR_MSG("issue=more_than_one_callback matched=~p",
+                       [MatchedCallbacks])
+    end.
+
+%% Still check arity even if Hook =/= Function
+check_hanlder_arity(Arity, Hook, _Host, Module, Function, Seq) ->
+    try
+        Exports = Module:module_info(exports),
+        case lists:member({Function, Arity}, Exports) of
+            true ->
+                ok;
+            false ->
+                ?ERROR_MSG("issue=wrong_arity module=~p function=~p hook=~p expected=~p",
+                           [Module, Function, Hook, Arity]),
+                ok
+        end
+        catch Error:Reason ->
+            ?ERROR_MSG("issue=check_hanlder_arity_failed module=~p reason=~p:~p",
+                       [Module, Error, Reason]),
+            ok
     end.

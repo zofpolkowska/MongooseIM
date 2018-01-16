@@ -29,6 +29,7 @@
 %%%-------------------------------------------------------------------
 -module(mod_mam).
 -behavior(gen_mod).
+-behavior(hook_handler).
 -xep([{xep, 313}, {version, "0.2"}]).
 -xep([{xep, 313}, {version, "0.3"}]).
 -xep([{xep, 313}, {version, "0.4.1"}]).

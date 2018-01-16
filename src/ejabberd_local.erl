@@ -29,6 +29,7 @@
 
 -behaviour(gen_server).
 -behaviour(mongoose_packet_handler).
+-behaviour(hook_handler).
 
 %% API
 -export([start_link/0]).

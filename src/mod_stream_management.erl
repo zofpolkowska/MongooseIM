@@ -1,6 +1,7 @@
 -module(mod_stream_management).
 -xep([{xep, 198}, {version, "1.3"}]).
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 
 %% `gen_mod' callbacks
 -export([start/2,

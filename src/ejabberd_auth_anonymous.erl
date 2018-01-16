@@ -26,6 +26,7 @@
 
 -module(ejabberd_auth_anonymous).
 -author('mickael.remond@process-one.net').
+-behaviour(hook_handler).
 
 -export([
          start/1,

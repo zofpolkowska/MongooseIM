@@ -27,6 +27,7 @@
 -author('alexey@process-one.net').
 
 -behaviour(gen_server).
+-behaviour(hook_handler).
 
 %% API
 -export([start_link/0,

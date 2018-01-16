@@ -6,6 +6,7 @@
 %%% Created : 13 Feb 2017 by Piotr Nosek
 %%%-------------------------------------------------------------------
 -module(mongoose_metrics_mam_hooks).
+-behaviour(hook_handler).
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").

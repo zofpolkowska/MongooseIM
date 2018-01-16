@@ -6,6 +6,7 @@
 %% This work was sponsored by Grindr LLC
 
 -behavior(gen_mod).
+-behaviour(hook_handler).
 -xep([{xep, 79}, {version, "1.2"}, {comment, "partially implemented."}]).
 -export([start/2, stop/1]).
 -export([check_packet/2,

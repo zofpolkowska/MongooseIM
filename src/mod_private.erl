@@ -28,6 +28,7 @@
 -author('alexey@process-one.net').
 
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 
 -export([start/2,
          stop/1,

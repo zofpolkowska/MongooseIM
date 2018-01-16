@@ -5,6 +5,7 @@
 %%%===================================================================
 -module(mod_bosh).
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 -behaviour(cowboy_loop_handler).
 -xep([{xep, 206}, {version, "1.4"}]).
 -xep([{xep, 124}, {version, "1.11"}]).

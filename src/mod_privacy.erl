@@ -29,6 +29,7 @@
 -xep([{xep, 16}, {version, "1.6"}]).
 -xep([{xep, 126}, {version, "1.1"}]).
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 
 -export([start/2,
          stop/1,

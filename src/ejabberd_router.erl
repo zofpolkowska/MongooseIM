@@ -28,6 +28,7 @@
 -author('alexey@process-one.net').
 
 -behaviour(gen_server).
+-behaviour(hook_handler).
 %% API
 -export([route/3,
          route/4,

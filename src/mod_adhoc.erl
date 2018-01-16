@@ -27,6 +27,7 @@
 -author('henoch@dtek.chalmers.se').
 
 -behaviour(gen_mod).
+-behaviour(hook_handler).
 
 -export([start/2,
          stop/1,
