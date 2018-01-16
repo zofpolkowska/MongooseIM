@@ -65,15 +65,18 @@
 start_link() ->
     gen_server:start_link({local, ejabberd_hooks}, ejabberd_hooks, [], []).
 
-%% @doc Add a fun to the given hook.
+%% @doc Add a fun to the given hook, if third argument is a function.
+%% Add hook handler with the same function name, if third argument is a module.
 %% The integer sequence is used to sort the calls:
 %% low numbers are executed before high numbers.
 -spec add(Hook :: atom(),
           Host :: ejabberd:server() | global,
-          Function :: fun() | atom(),
+          FunctionOrModule :: fun() | atom(),
           Seq :: integer()) -> ok.
 add(Hook, Host, Function, Seq) when is_function(Function) ->
-    add(Hook, Host, undefined, Function, Seq).
+    add(Hook, Host, undefined, Function, Seq);
+add(Hook, Host, Module, Seq) when is_atom(Module) ->
+    add(Hook, Host, Module, Hook, Seq).
 
 %% @doc Add a module and function to the given hook.
 %% The integer sequence is used to sort the calls:
@@ -96,14 +99,18 @@ add_or_del(AddOrDel, Hooks) ->
      Hook <- Hooks],
     ok.
 
-%% @doc Delete a module and function from this hook.
+%% @doc Delete a module and function from this hook, if third argument is a function.
+%% Deletes hook handler, where hook name and function name are equal,
+%% if third argument is a module.
 %% It is important to indicate exactly the same information than when the call was added.
 -spec delete(Hook :: atom(),
              Host :: ejabberd:server() | global,
-             Function :: fun() | atom(),
+             FunctionOrModule :: fun() | atom(),
              Seq :: integer()) -> ok.
 delete(Hook, Host, Function, Seq) when is_function(Function) ->
-    delete(Hook, Host, undefined, Function, Seq).
+    delete(Hook, Host, undefined, Function, Seq);
+delete(Hook, Host, Module, Seq) when is_atom(Module) ->
+    delete(Hook, Host, Module, Hook, Seq).
 
 -spec delete(Hook :: atom(),
              Host :: ejabberd:server() | global,
@@ -186,6 +193,7 @@ init([]) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %%----------------------------------------------------------------------
 handle_call({add, Hook, Host, Module, Function, Seq}, _From, State) ->
+    check_function_name(Hook, Host, Module, Function, Seq),
     Reply = case ets:lookup(hooks, {Hook, Host}) of
                 [{_, Ls}] ->
                     El = {Seq, Module, Function},
@@ -290,3 +298,16 @@ record(_Hook, _Module, _Function, Acc) ->
 %%        false ->
 %%            Acc
 %%    end.
+
+
+check_function_name(Hook, _Host, Module, Function, _Seq)
+  when is_atom(Function), Hook =/= Function ->
+    %% Hook and Function should be the same
+    ?WARNING_MSG("issue=hook_format_depricated "
+                 "module=~p "
+                 "hook=~p "
+                 "function=~p ",
+                 [Module, Hook, Function]);
+check_function_name(_Hook, _Host, _Module, _Function, _Seq) ->
+    ok.
+
