@@ -327,7 +327,7 @@ check_packet(Acc, User, Server,
             case NeedDb of
                 true ->
                     Host = jid:nameprep(Server),
-                    roster_get_jid_info(Host, User, Server, LJID);
+                    run_roster_get_jid_info(Host, User, Server, LJID);
                 false ->
                     {[], []}
             end,
@@ -688,7 +688,7 @@ broadcast_privacy_list(LUser, LServer, Name, UserList) ->
 broadcast_privacy_list_packet(Name, UserList) ->
     {broadcast, {privacy_list, UserList, Name}}.
 
-roster_get_jid_info(Host, User, Server, LJID) ->
+run_roster_get_jid_info(Host, User, Server, LJID) ->
     ejabberd_hooks:run_fold(
         roster_get_jid_info,
         Host,
