@@ -19,6 +19,8 @@
 
 -export([kick_everyone/0]).
 -export([ensure_muc_clean/0]).
+-export([successful_rpc/3]).
+-export([logout_user/2]).
 
 -define(RPC(M, F, A), escalus_ejabberd:rpc(M, F, A)).
 
@@ -93,13 +95,18 @@ clear_last_activity(Config, User) ->
 
 do_clear_last_activity(Config, User) when is_atom(User)->
     [U, S, _P] = escalus_users:get_usp(Config, carol),
-    escalus_ejabberd:rpc(mod_last, remove_user, [U, S]);
+    Acc = new_mongoose_acc(),
+    successful_rpc(mod_last, remove_user, [Acc, U, S]);
 do_clear_last_activity(_Config, User) when is_binary(User) ->
     U = escalus_utils:get_username(User),
     S = escalus_utils:get_server(User),
-    escalus_ejabberd:rpc(mod_last, remove_user, [U, S]);
+    Acc = new_mongoose_acc(),
+    successful_rpc(mod_last, remove_user, [Acc, U, S]);
 do_clear_last_activity(Config, Users) when is_list(Users) ->
     lists:foreach(fun(User) -> do_clear_last_activity(Config, User) end, Users).
+
+new_mongoose_acc() ->
+    successful_rpc(mongoose_acc, new, []).
 
 clear_caps_cache(CapsNode) ->
     ok = ?RPC(mod_caps, delete_caps, [CapsNode]).
@@ -214,3 +221,43 @@ forget_persistent_rooms() ->
     escalus_ejabberd:rpc(mnesia, clear_table, [muc_room]),
     escalus_ejabberd:rpc(mnesia, clear_table, [muc_registered]),
     ok.
+
+-spec successful_rpc(atom(), atom(), list()) -> term().
+successful_rpc(Module, Function, Args) ->
+    case escalus_ejabberd:rpc(Module, Function, Args) of
+        {badrpc, Reason} ->
+            ct:fail({badrpc, Module, Function, Args, Reason});
+        Result ->
+            Result
+    end.
+
+%% This function is a version of escalus_client:stop/2
+%% that ensures that c2s process is dead.
+%% This allows to avoid race conditions.
+logout_user(Config, User) ->
+    Resource = escalus_client:resource(User),
+    Username = escalus_client:username(User),
+    Server = escalus_client:server(User),
+    Result = successful_rpc(ejabberd_sm, get_session_pid,
+                            [Username, Server, Resource]),
+    case Result of
+        none ->
+            %% This case can be a side effect of some error, you should
+            %% check your test when you see the message.
+            ct:pal("issue=user_not_registered jid=~ts@~ts/~ts",
+                   [Username, Server, Resource]),
+            escalus_client:stop(Config, User);
+        Pid when is_pid(Pid) ->
+            MonitorRef = erlang:monitor(process, Pid),
+            escalus_client:stop(Config, User),
+            %% Wait for pid to die
+            receive
+                {'DOWN', MonitorRef, _, _, _} ->
+                    ok
+                after 10000 ->
+                    ct:pal("issue=c2s_still_alive "
+                            "jid=~ts@~ts/~ts pid=~p",
+                           [Username, Server, Resource, Pid]),
+                    ct:fail({logout_user_failed, {Username, Resource, Pid}})
+            end
+    end.

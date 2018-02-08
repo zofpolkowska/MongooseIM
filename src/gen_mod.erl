@@ -52,6 +52,7 @@
          set_opt/3,
          get_module_opt/4,
          set_module_opt/4,
+         set_module_opts/3,
          get_module_opts/2,
          get_opt_subhost/3,
          get_opt_subhost/4,
@@ -66,10 +67,10 @@
          is_loaded/2,
          get_deps/3]).
 
--include("ejabberd.hrl").
+-include("mongoose.hrl").
 
 -record(ejabberd_module, {
-          module_host, % {module(), ejabberd:server()},
+          module_host, % {module(), jid:server()},
           opts % list()
          }).
 
@@ -79,8 +80,8 @@
 %%      {stop, 1}];
 %% behaviour_info(_Other) ->
 %%     undefined.
--callback start(Host :: ejabberd:server(), Opts :: list()) -> any().
--callback stop(Host :: ejabberd:server()) -> any().
+-callback start(Host :: jid:server(), Opts :: list()) -> any().
+-callback stop(Host :: jid:server()) -> any().
 
 %% Optional callback specifying module dependencies.
 %% The dependent module can specify parameters with which the dependee should be
@@ -90,7 +91,7 @@
 %% case of cycle (in that case soft dependency may be started after the
 %% dependent module).
 %%
-%% -callback deps(Host :: ejabberd:server(), Opts :: proplists:list()) ->
+%% -callback deps(Host :: jid:server(), Opts :: proplists:list()) ->
 %%     deps_list().
 
 -spec start() -> 'ok'.
@@ -100,7 +101,7 @@ start() ->
     ok.
 
 
--spec start_module(Host :: ejabberd:server(),
+-spec start_module(Host :: jid:server(),
                    Module :: module(),
                    Opts :: [any()]) -> any().
 start_module(Host, Module, Opts0) ->
@@ -162,7 +163,7 @@ is_app_running(AppName) ->
 
 
 %% @doc Stop the module in a host, and forget its configuration.
--spec stop_module(ejabberd:server(), module()) -> 'error' | {'aborted', _} | {'atomic', _}.
+-spec stop_module(jid:server(), module()) -> 'error' | {'aborted', _} | {'atomic', _}.
 stop_module(Host, Module) ->
     case stop_module_keep_config(Host, Module) of
         error ->
@@ -176,7 +177,7 @@ stop_module(Host, Module) ->
 %% configuration is kept in the Mnesia local_config table, when ejabberd is
 %% restarted the module will be started again. This function is useful when
 %% ejabberd is being stopped and it stops all modules.
--spec stop_module_keep_config(ejabberd:server(), module()) -> 'error' | 'ok'.
+-spec stop_module_keep_config(jid:server(), module()) -> 'error' | 'ok'.
 stop_module_keep_config(Host, Module) ->
     case catch Module:stop(Host) of
         {'EXIT', Reason} ->
@@ -195,7 +196,7 @@ stop_module_keep_config(Host, Module) ->
             ok
     end.
 
--spec reload_module(ejabberd:server(), module(), [any()]) -> 'error' | 'ok'.
+-spec reload_module(jid:server(), module(), [any()]) -> 'error' | 'ok'.
 reload_module(Host, Module, Opts) ->
     stop_module_keep_config(Host, Module),
     start_module(Host, Module, Opts).
@@ -280,7 +281,7 @@ get_module_opts(Host, Module) ->
 
 
 -spec get_module_opt_by_subhost(
-        SubHost :: ejabberd:server(),
+        SubHost :: jid:server(),
         Module :: module(),
         Opt :: term(),
         Default :: term()) -> term().
@@ -288,22 +289,30 @@ get_module_opt_by_subhost(SubHost, Module, Opt, Default) ->
     {ok, Host} = mongoose_subhosts:get_host(SubHost),
     get_module_opt(Host, Module, Opt, Default).
 
+
 %% @doc Non-atomic! You have been warned.
--spec set_module_opt(ejabberd:server(), module(), _Opt, _Value) -> boolean().
+-spec set_module_opt(jid:server(), module(), _Opt, _Value) -> boolean().
 set_module_opt(Host, Module, Opt, Value) ->
-    Key = {Module, Host},
-    OptsList = ets:lookup(ejabberd_modules, Key),
-    case OptsList of
+    case ets:lookup(ejabberd_modules, {Module, Host}) of
         [] ->
             false;
         [#ejabberd_module{opts = Opts}] ->
             Updated = set_opt(Opt, Opts, Value),
-            ets:update_element(ejabberd_modules, Key,
-                               {#ejabberd_module.opts, Updated})
+            set_module_opts(Host, Module, Updated)
     end.
 
+
+%% @doc Replaces all module options
+-spec set_module_opts(ejabberd:server(), module(), _Opts) -> true.
+set_module_opts(Host, Module, Opts0) ->
+    Opts = proplists:unfold(Opts0),
+    ets:insert(ejabberd_modules,
+               #ejabberd_module{module_host = {Module, Host},
+                                opts = Opts}).
+
+
 -spec set_module_opt_by_subhost(
-        SubHost :: ejabberd:server(),
+        SubHost :: jid:server(),
         Module :: module(),
         Opt :: term(),
         Value :: term()) -> boolean().
@@ -312,21 +321,21 @@ set_module_opt_by_subhost(SubHost, Module, Opt, Value) ->
     set_module_opt(Host, Module, Opt, Value).
 
 
--spec get_opt_subhost(ejabberd:server(), list(), list() | binary()) -> ejabberd:server().
+-spec get_opt_subhost(jid:server(), list(), list() | binary()) -> jid:server().
 get_opt_subhost(Host, Opts, Default) ->
     get_opt_subhost(Host, host, Opts, Default).
 
--spec get_opt_subhost(ejabberd:server(), atom(), list(), list() | binary()) -> ejabberd:server().
+-spec get_opt_subhost(jid:server(), atom(), list(), list() | binary()) -> jid:server().
     get_opt_subhost(Host, OptName, Opts, Default) ->
     Val = get_opt(OptName, Opts, Default),
     re:replace(Val, "@HOST@", Host, [global, {return, binary}]).
 
--spec get_module_opt_subhost(ejabberd:server(), module(), list() | binary()) -> ejabberd:server().
+-spec get_module_opt_subhost(jid:server(), module(), list() | binary()) -> jid:server().
 get_module_opt_subhost(Host, Module, Default) ->
     Subject = get_module_opt(Host, Module, host, Default),
     re:replace(Subject, "@HOST@", Host, [global, {return, binary}]).
 
--spec loaded_modules(ejabberd:server()) -> [module()].
+-spec loaded_modules(jid:server()) -> [module()].
 loaded_modules(Host) ->
     ets:select(ejabberd_modules,
                [{#ejabberd_module{_ = '_', module_host = {'$1', Host}},
@@ -334,7 +343,7 @@ loaded_modules(Host) ->
                  ['$1']}]).
 
 
--spec loaded_modules_with_opts(ejabberd:server()) -> [{module(), list()}].
+-spec loaded_modules_with_opts(jid:server()) -> [{module(), list()}].
 loaded_modules_with_opts(Host) ->
     ets:select(ejabberd_modules,
                [{#ejabberd_module{_ = '_', module_host = {'$1', Host},
@@ -343,9 +352,10 @@ loaded_modules_with_opts(Host) ->
                  [{{'$1', '$2'}}]}]).
 
 
--spec set_module_opts_mnesia(ejabberd:server(), module(), [any()]
+-spec set_module_opts_mnesia(jid:server(), module(), [any()]
                             ) -> {'aborted', _} | {'atomic', _}.
-set_module_opts_mnesia(Host, Module, Opts) ->
+set_module_opts_mnesia(Host, Module, Opts0) ->
+    Opts = proplists:unfold(Opts0),
     Modules = case ejabberd_config:get_local_option({modules, Host}) of
         undefined ->
             [];
@@ -357,7 +367,7 @@ set_module_opts_mnesia(Host, Module, Opts) ->
     ejabberd_config:add_local_option({modules, Host}, Modules2).
 
 
--spec del_module_mnesia(ejabberd:server(), module()) -> {'aborted', _} | {'atomic', _}.
+-spec del_module_mnesia(jid:server(), module()) -> {'aborted', _} | {'atomic', _}.
 del_module_mnesia(Host, Module) ->
     Modules = case ejabberd_config:get_local_option({modules, Host}) of
                   undefined ->
@@ -398,7 +408,7 @@ clear_opts(Module, Opts0) ->
     end.
 
 
--spec get_deps(Host :: ejabberd:server(), Module :: module(),
+-spec get_deps(Host :: jid:server(), Module :: module(),
                Opts :: proplists:proplist()) -> deps_list().
 get_deps(Host, Module, Opts) ->
     %% the module has to be loaded,

@@ -11,7 +11,7 @@
 -behaviour(gen_mod).
 -behaviour(mod_event_pusher).
 
--callback should_make_req(Packet :: exml:element(), From :: jid(), To :: jid()) -> boolean().
+-callback should_make_req(Packet :: exml:element(), From :: jid:jid(), To :: jid:jid()) -> boolean().
 
 -include("mod_event_pusher_events.hrl").
 -include("jlib.hrl").
@@ -19,7 +19,7 @@
 %% API
 -export([start/2, stop/1, push_event/2]).
 
--include("ejabberd.hrl").
+-include("mongoose.hrl").
 -include("jlib.hrl").
 
 -define(DEFAULT_POOL_NAME, http_pool).
@@ -38,7 +38,7 @@ stop(_Host) ->
 
 push_event(_, #chat_event{direction = in, from = From, to = To, packet = Packet}) ->
     Body = exml_query:path(Packet, [{element, <<"body">>}, cdata], <<>>),
-    Mod = get_callback_module(),
+    Mod = get_callback_module(From#jid.lserver),
     case Mod:should_make_req(Packet, From, To) of
         true ->
             make_req(From#jid.lserver, From#jid.luser, To#jid.luser, Body);
@@ -52,19 +52,19 @@ push_event(_, _Event) ->
 %%% Internal functions
 %%%===================================================================
 
-get_callback_module() ->
-    gen_mod:get_module_opt(?MYNAME, ?MODULE, callback_module, mod_event_pusher_http_defaults).
+get_callback_module(Host) ->
+    gen_mod:get_module_opt(Host, ?MODULE, callback_module, mod_event_pusher_http_defaults).
 
 make_req(Host, Sender, Receiver, Message) ->
     Path = fix_path(list_to_binary(gen_mod:get_module_opt(Host, ?MODULE, path, ?DEFAULT_PATH))),
     PoolName = gen_mod:get_module_opt(Host, ?MODULE, pool_name, ?DEFAULT_POOL_NAME),
     Pool = mongoose_http_client:get_pool(PoolName),
-    Query = <<"author=", Sender/binary, "&server=", Host/binary,
-              "&receiver=", Receiver/binary, "&message=", Message/binary>>,
+    EncodedQuery = cow_qs:qs([{<<"author">>, Sender},
+        {<<"server">>, Host}, {<<"receiver">>, Receiver}, {<<"message">>, Message}]),
     ?INFO_MSG("Making request '~p' for user ~s@~s...", [Path, Sender, Host]),
     Headers = [{<<"Content-Type">>, <<"application/x-www-form-urlencoded">>}],
     T0 = os:timestamp(),
-    {Res, Elapsed} = case mongoose_http_client:post(Pool, Path, Headers, Query) of
+    {Res, Elapsed} = case mongoose_http_client:post(Pool, Path, Headers, EncodedQuery) of
                          {ok, _} ->
                              {ok, timer:now_diff(os:timestamp(), T0)};
                          {error, Reason} ->
