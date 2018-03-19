@@ -1137,10 +1137,17 @@ filter_out_node_specific_options([{local_config, {modules, Host}, Mods} | Opts])
     NewMods = lists:foldl(fun(Path, Mods) -> delete_path_in_proplist(Mods, Path) end,
                           Mods, node_specific_module_options()),
     [{local_config, {modules, Host}, NewMods} | Opts];
+filter_out_node_specific_options([Option | Opts]) ->
+    case is_node_specific(Option) of
+        true ->
+            filter_out_node_specific_options(Opts);
+        false ->
+            [Option | filter_out_node_specific_options(Opts)]
+    end;
 filter_out_node_specific_options([Opt | Opts]) ->
     [Opt | filter_out_node_specific_options(Opts)].
 
-% @doc The list of options that should not be checked if equal
+% @doc The list of module options that should not be checked if equal
 % between nodes in cluster. Each option is expressed as
 % a list of keys in proplist that should be deleted (if such
 % path exists). The `root path` for them is a list of modules.
@@ -1148,6 +1155,16 @@ node_specific_module_options() ->
     [
      [mod_global_distrib, connections, endpoints]
     ].
+
+is_node_specific({_, {auth_opts, _Host},  _Val}) ->
+    true;
+is_node_specific({_, {anonymous_protocol, _Host}, _Val}) ->
+    true;
+is_node_specific({_, {auth_method, _Host}, _Val}) ->
+    true;
+is_node_specific(_) ->
+    false.
+
 
 delete_path_in_proplist(Plist, [Step]) ->
     lists:keydelete(Step, 1, Plist);
