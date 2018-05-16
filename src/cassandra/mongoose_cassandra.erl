@@ -51,7 +51,7 @@
 
 %% API
 -export([cql_read/5, cql_foldl/7, cql_write/5, cql_write_async/5]).
--export([now_timestamp/0]).
+-export([now_timestamp/0, configured_pools/0]).
 
 %% Test queries
 -export([prepared_queries/0, total_count_query_cql/1, test_query_sql/0]).
@@ -72,18 +72,15 @@
 -spec start() -> ignore | ok | no_return().
 start() ->
     application:set_env(cqerl, maps, true),
-    case ejabberd_config:get_local_option(cassandra_servers) of
-        undefined ->
-            ignore;
-        Pools ->
-            cqerl_app:start(normal, []),
-            [init_pool(Pool) || Pool <- Pools]
-    end.
+    {ok, []} = application:ensure_all_started(cqerl),
+    {ok, []} = application:ensure_all_started(worker_pool),
+
+    [init_pool(Pool) || Pool <- configured_pools()].
 
 -spec stop() -> _.
 stop() ->
-    mongoose_cassandra_sup:stop(),
-    cqerl_app:stop(undefined).
+    [wpool:stop_pool(PoolName) || {PoolName, _} <- configured_pools()],
+    application:stop(cqerl).
 
 %% Module helpers
 -spec init_pool({pool_name(), proplists:proplist()} |
@@ -95,7 +92,10 @@ init_pool({PoolName, PoolSize, PoolConfig}) ->
     ExtConfig = extend_config(PoolConfig),
     application:set_env(cqerl, num_clients, PoolSize),
     ok = cqerl_cluster:add_nodes(PoolName, proplists:get_value(servers, ExtConfig), ExtConfig),
-    {ok, _} = mongoose_cassandra_sup:start(PoolName, PoolSize * 4),
+    {ok, _} = wpool:start_sup_pool(PoolName, [
+        {workers, PoolSize * 4},
+        {worker, {mongoose_cassandra_worker, [PoolName]}}
+    ]),
     ok.
 
 extend_config(PoolConfig) ->
@@ -107,6 +107,14 @@ extend_config(PoolConfig) ->
 
     ConfigMap = maps:merge(Defaults, maps:from_list(PoolConfig)),
     maps:to_list(ConfigMap).
+
+configured_pools() ->
+    case ejabberd_config:get_local_option(cassandra_servers) of
+        undefined ->
+            [];
+        Pools ->
+            Pools
+    end.
 
 
 %% ====================================================================

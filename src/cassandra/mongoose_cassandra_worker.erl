@@ -23,9 +23,6 @@
 %% Exports
 %% ====================================================================
 
-%% Internal exports
--export([start_link/1]).
-
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
     terminate/2, code_change/3]).
@@ -125,17 +122,12 @@
 -type worker_state()    :: #state{}.
 -type process_type()    :: cqerl_client.
 -type error_type()      :: {down, process_type()} | cancel | cqerl_error.
--type error_reason()    :: {Code :: non_neg_integer(), Details :: binary(), any()} |
-timeout | term().
+-type error_reason()    :: {Code :: non_neg_integer(), Details :: binary(), any()} | timeout | term().
 
 
 %%====================================================================
 %% API functions
 %%====================================================================
-
--spec start_link(mongoose_cassandra:pool_name()) -> {ok, pid()} | ignore | {error, any()}.
-start_link(PoolName) ->
-    gen_server:start_link(?MODULE, [PoolName], []).
 
 
 %% --------------------------------------------------------
@@ -149,9 +141,8 @@ start_link(PoolName) ->
     mongoose_cassandra:rows(), options()) ->
     ok | {error, Reason :: term()}.
 write(PoolName, ContextId, QueryStr, Rows, Opts) ->
-    Worker = mongoose_cassandra_sup:select_worker(PoolName, ContextId),
     Opts1 = #{timeout := Timeout} = prepare_options(Opts),
-    gen_server:call(Worker, {write, QueryStr, Rows, Opts1}, Timeout).
+    wpool:call(PoolName, {write, QueryStr, Rows, Opts1}, worker_strategy(ContextId), Timeout).
 
 %% --------------------------------------------------------
 %% @doc Same as @see write/5 but asynchronous (without response).
@@ -161,9 +152,8 @@ write(PoolName, ContextId, QueryStr, Rows, Opts) ->
     mongoose_cassandra:rows(), options()) ->
     ok.
 write_async(PoolName, ContextId, QueryStr, Rows, Opts) ->
-    Worker = mongoose_cassandra_sup:select_worker(PoolName, ContextId),
     Opts1 = prepare_options(Opts),
-    gen_server:cast(Worker, {write, QueryStr, Rows, Opts1}).
+    wpool:cast(PoolName, {write, QueryStr, Rows, Opts1}, worker_strategy(ContextId)).
 
 %% --------------------------------------------------------
 %% @doc Execute read query to Cassandra (select).
@@ -177,9 +167,8 @@ write_async(PoolName, ContextId, QueryStr, Rows, Opts) ->
     mongoose_cassandra:fold_accumulator(), options()) ->
     {ok, mongoose_cassandra:fold_accumulator()} | {error, Reason :: term()}.
 read(PoolName, ContextId, QueryStr, Params, Fun, AccIn, Opts) ->
-    Worker = mongoose_cassandra_sup:select_worker(PoolName, ContextId),
     Opts1 = #{timeout := Timeout} = prepare_options(Opts),
-    gen_server:call(Worker, {read, QueryStr, Params, Fun, AccIn, Opts1}, Timeout).
+    wpool:call(PoolName, {read, QueryStr, Params, Fun, AccIn, Opts1}, worker_strategy(ContextId), Timeout).
 
 %% ----------------------------------------------------------------------
 %% QUEUE LENGTH
@@ -677,3 +666,29 @@ response_code_to_binary(Code) when is_integer(Code) ->
     end;
 response_code_to_binary(_) ->
     <<"invalidErrorCode">>.
+
+%% Some wpool specific worker selection logic
+pick_worker(PoolName, undefined) ->
+    wpool_pool:best_worker(PoolName);
+pick_worker(PoolName, ContextId) ->
+    wpool_pool:hash_worker(PoolName, ContextId).
+
+maybe_pick_different_worker(PoolName, _WorkerName, 0) ->
+    error({pool_to_small_for_nasted_queries, PoolName});
+maybe_pick_different_worker(PoolName, WorkerName, Tries) ->
+    case whereis(WorkerName) =:= self() of
+        true ->
+            NextWorker = wpool_pool:next_worker(PoolName),
+            maybe_pick_different_worker(PoolName, NextWorker, Tries - 1);
+        false ->
+            WorkerName
+    end.
+
+worker_strategy(ContextId) ->
+    fun(PoolName) ->
+        Worker = pick_worker(PoolName, ContextId),
+        %% It could be that we select current process (nasted queries)
+        %% In such case, we need to pick "next_worker" which will return different process after at most 2 tries
+        %% ( + 1 for current check)
+        maybe_pick_different_worker(PoolName, Worker, 3)
+    end.

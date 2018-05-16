@@ -1149,7 +1149,7 @@ is_riak_enabled(_Host) ->
     end.
 
 is_cassandra_enabled(_) ->
-    case escalus_ejabberd:rpc(mongoose_cassandra_sup, get_all_workers, []) of
+    case escalus_ejabberd:rpc(mongoose_cassandra, configured_pools, []) of
         [_|_]=_Pools ->
             true;
         _ ->
