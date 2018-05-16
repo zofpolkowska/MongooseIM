@@ -30,9 +30,6 @@
 %% gen_server API
 -export([write/5, write_async/5, read/7]).
 
-%% Metrics utils
--export([queue_length/1]).
-
 -behaviour(gen_server).
 
 %% ====================================================================
@@ -142,7 +139,8 @@
     ok | {error, Reason :: term()}.
 write(PoolName, ContextId, QueryStr, Rows, Opts) ->
     Opts1 = #{timeout := Timeout} = prepare_options(Opts),
-    wpool:call(PoolName, {write, QueryStr, Rows, Opts1}, worker_strategy(ContextId), Timeout).
+    Call = {write, QueryStr, Rows, Opts1},
+    mongoose_cassandra_pool:call_query(PoolName, ContextId, Call, Timeout).
 
 %% --------------------------------------------------------
 %% @doc Same as @see write/5 but asynchronous (without response).
@@ -153,7 +151,8 @@ write(PoolName, ContextId, QueryStr, Rows, Opts) ->
     ok.
 write_async(PoolName, ContextId, QueryStr, Rows, Opts) ->
     Opts1 = prepare_options(Opts),
-    wpool:cast(PoolName, {write, QueryStr, Rows, Opts1}, worker_strategy(ContextId)).
+    Cast = {write, QueryStr, Rows, Opts1},
+    mongoose_cassandra_pool:cast_query(PoolName, ContextId, Cast).
 
 %% --------------------------------------------------------
 %% @doc Execute read query to Cassandra (select).
@@ -168,32 +167,8 @@ write_async(PoolName, ContextId, QueryStr, Rows, Opts) ->
     {ok, mongoose_cassandra:fold_accumulator()} | {error, Reason :: term()}.
 read(PoolName, ContextId, QueryStr, Params, Fun, AccIn, Opts) ->
     Opts1 = #{timeout := Timeout} = prepare_options(Opts),
-    wpool:call(PoolName, {read, QueryStr, Params, Fun, AccIn, Opts1}, worker_strategy(ContextId), Timeout).
-
-%% ----------------------------------------------------------------------
-%% QUEUE LENGTH
-
-%% For metrics.
-queue_length(PoolName) ->
-    Len = lists:sum(queue_lengths(PoolName)),
-    {ok, Len}.
-
-queue_lengths(PoolName) ->
-    Workers = mongoose_cassandra_sup:get_all_workers(PoolName),
-    [worker_queue_length(Worker) || Worker <- Workers].
-
-worker_queue_length(Worker) ->
-    %% We really don't want to call process, because it can does not respond
-    Info = erlang:process_info(Worker, [message_queue_len, dictionary]),
-    case Info of
-        undefined -> %% dead
-            0;
-        [{message_queue_len, ExtLen}, {dictionary, Dict}] ->
-            %% External queue contains not only queued queries but also waiting responds.
-            %% But it's usually 0.
-            IntLen = proplists:get_value(query_refs_count, Dict, 0),
-            ExtLen + IntLen
-    end.
+    Call = {read, QueryStr, Params, Fun, AccIn, Opts1},
+    mongoose_cassandra_pool:call_query(PoolName, ContextId, Call, Timeout).
 
 %%====================================================================
 %% gen_server callbacks
@@ -666,29 +641,3 @@ response_code_to_binary(Code) when is_integer(Code) ->
     end;
 response_code_to_binary(_) ->
     <<"invalidErrorCode">>.
-
-%% Some wpool specific worker selection logic
-pick_worker(PoolName, undefined) ->
-    wpool_pool:best_worker(PoolName);
-pick_worker(PoolName, ContextId) ->
-    wpool_pool:hash_worker(PoolName, ContextId).
-
-maybe_pick_different_worker(PoolName, _WorkerName, 0) ->
-    error({pool_to_small_for_nasted_queries, PoolName});
-maybe_pick_different_worker(PoolName, WorkerName, Tries) ->
-    case whereis(WorkerName) =:= self() of
-        true ->
-            NextWorker = wpool_pool:next_worker(PoolName),
-            maybe_pick_different_worker(PoolName, NextWorker, Tries - 1);
-        false ->
-            WorkerName
-    end.
-
-worker_strategy(ContextId) ->
-    fun(PoolName) ->
-        Worker = pick_worker(PoolName, ContextId),
-        %% It could be that we select current process (nasted queries)
-        %% In such case, we need to pick "next_worker" which will return different process after at most 2 tries
-        %% ( + 1 for current check)
-        maybe_pick_different_worker(PoolName, Worker, 3)
-    end.
