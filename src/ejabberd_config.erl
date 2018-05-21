@@ -49,6 +49,7 @@
 -export([reload_local/0,
          reload_cluster/0,
          apply_changes_remote/5,
+         parse_file/1,
          apply_changes/6]).
 
 -export([compute_config_version/2,
@@ -921,16 +922,17 @@ log_configs(Node, RunId, ConfigFile) ->
     filelib:ensure_dir(Dir),
     case node() of
         Node ->
-            file:write_file(Dir ++ "local_config", io_lib:fwrite("~p.\n", [get_local_config()])),
-            file:write_file(Dir ++ "local_host_config", io_lib:fwrite("~p.\n", [get_host_local_config()])),
-            file:write_file(Dir ++ "local_file", io_lib:fwrite("~p.\n", [parse_file(ConfigFile)]));
+            #state{opts = Opts, hosts = Hosts} = parse_file(ConfigFile),
+            file:write_file(Dir ++ "local_config", io_lib:fwrite("~p.\n", [sort_config(get_local_config())])),
+            file:write_file(Dir ++ "local_host_config", io_lib:fwrite("~p.\n", [sort_config(get_host_local_config())])),
+            file:write_file(Dir ++ "local_file", io_lib:fwrite("~p.\n", [sort_config(Opts ++ Hosts)]));
         _ ->
             LocalConfig = rpc:call(Node, ?MODULE, get_local_config, []),
             LocalHostConfig = rpc:call(Node, ?MODULE, get_host_local_config, []),
-            File = rpc:call(Node, ?MODULE, parse_file, [ConfigFile]),
-            file:write_file(Dir ++ "remote_config-" ++ atom_to_list(Node), io_lib:fwrite("~p.\n", [LocalConfig ])),
-            file:write_file(Dir ++ "remote_host_config-" ++ atom_to_list(Node), io_lib:fwrite("~p.\n", [LocalHostConfig])),
-            file:write_file(Dir ++ "remote_file-" ++ atom_to_list(Node), io_lib:fwrite("~p.\n", [parse_file(ConfigFile)]))
+            #state{opts = Opts, hosts = Hosts} = rpc:call(Node, ?MODULE, parse_file, [ConfigFile]),
+            file:write_file(Dir ++ "remote_config-" ++ atom_to_list(Node), io_lib:fwrite("~p.\n", [sort_config(LocalConfig)])),
+            file:write_file(Dir ++ "remote_host_config-" ++ atom_to_list(Node), io_lib:fwrite("~p.\n", [sort_config(LocalHostConfig)])),
+            file:write_file(Dir ++ "remote_file-" ++ atom_to_list(Node), io_lib:fwrite("~p.\n", [sort_config(Opts ++ Hosts)]))
     end.
 
 
