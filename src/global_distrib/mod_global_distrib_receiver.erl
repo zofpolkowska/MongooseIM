@@ -194,8 +194,8 @@ start_listener({Addr, Port} = Ref, RetriesLeft) ->
     case ranch:start_listener(Ref, 10, ranch_tcp, [{ip, Addr}, {port, Port}], ?MODULE, []) of
         {ok, _} -> ok;
         {error, Err} when RetriesLeft > 0 ->
-            ?ERROR_MSG("Failed to start listener on ~s:~b: (Err: p). Will retry in 1 second.",
-                       [inet:ntoa(Addr), Port, Err]),
+            ?ERROR_MSG("[~p] Failed to start listener on ~s:~b: (Err: ~p). Will retry in 4 seconds.",
+                       [RetriesLeft, inet:ntoa(Addr), Port, Err]),
             timer:sleep(?LISTEN_RETRY_DELAY),
             start_listener(Ref, RetriesLeft - 1)
     end.
