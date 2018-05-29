@@ -971,6 +971,7 @@ get_config_diff(State) ->
     CC = compare_terms(Config, NewConfig, 2, 3),
     LC = compare_terms(Local, NewLocal, 2, 3),
     LHC = compare_terms(group_host_changes(HostsLocal), group_host_changes(NewHostsLocal), 1, 2),
+    io:format("LHC: ~p", [LHC]),
     {CC, LC, LHC}.
 
 -spec apply_changes_remote(file:name(), term(), binary(), binary(), string()) ->

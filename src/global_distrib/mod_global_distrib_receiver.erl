@@ -29,8 +29,8 @@
 -export([start/2, stop/1]).
 -export([init/1, handle_info/2, handle_cast/2, handle_call/3, code_change/3, terminate/2]).
 
--define(LISTEN_RETRIES, 5). %% Number of retries in case of eaddrinuse
--define(LISTEN_RETRY_DELAY, 1000). %% Milliseconds to retrying in case of eaddrinuse
+-define(LISTEN_RETRIES, 10). %% Number of retries in case of error
+-define(LISTEN_RETRY_DELAY, 4000). %% Milliseconds to retrying in case of error
 
 -record(state, {
     socket :: mod_global_distrib_transport:t(),
@@ -193,9 +193,9 @@ start_listener({Addr, Port} = Ref, RetriesLeft) ->
     ?INFO_MSG("Starting listener on ~s:~b", [inet:ntoa(Addr), Port]),
     case ranch:start_listener(Ref, 10, ranch_tcp, [{ip, Addr}, {port, Port}], ?MODULE, []) of
         {ok, _} -> ok;
-        {error, eaddrinuse} when RetriesLeft > 0 ->
-            ?ERROR_MSG("Failed to start listener on ~s:~b: address in use. Will retry in 1 second.",
-                       [inet:ntoa(Addr), Port]),
+        {error, Err} when RetriesLeft > 0 ->
+            ?ERROR_MSG("Failed to start listener on ~s:~b: (Err: p). Will retry in 1 second.",
+                       [inet:ntoa(Addr), Port, Err]),
             timer:sleep(?LISTEN_RETRY_DELAY),
             start_listener(Ref, RetriesLeft - 1)
     end.
