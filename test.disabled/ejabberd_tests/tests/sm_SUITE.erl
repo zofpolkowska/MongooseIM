@@ -27,7 +27,7 @@ all() ->
      ].
 
 groups() ->
-    [{parallel, [parallel], parallel_test_cases()},
+    [{parallel, [parallel, {repeat_until_any_fail, 500}], parallel_test_cases()},
      {parallel_manual_ack_freq_1, [parallel], parallel_manual_ack_test_cases()},
      {manual_ack_freq_long_session_timeout, [parallel], [preserve_order]}
     ].
