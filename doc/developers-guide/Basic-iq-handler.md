@@ -63,7 +63,7 @@ process_iq(_From, _To, Acc, IQ) ->
 ```
 
 
-### Processing IQ policies
+### IQ processing policies
 
 The server may use one of the following strategies to handle incoming stanzas:
 
