@@ -182,12 +182,22 @@ change_affiliation(Domain, RoomID, Sender, Recipient0, Affiliation) ->
     ejabberd_router:route(S, R, iq(jid:to_binary(S), jid:to_binary(R),
                                    <<"set">>, [Changes])).
 
-change_room_config(Domain, RoomID, RoomName, Subject) ->
-    MUCLightDomain = gen_mod:get_module_opt_subhost(Domain, mod_muc_light,
-                                                    mod_muc_light:default_host()),
-    RoomUS = jid:make(RoomID, MUCLightDomain, <<>>),
-    mod_muc_light:change_room_config(x, RoomUS, [{<<"roomname">>, RoomName}]),
-    jid:to_binary(RoomUS).
+change_room_config([Domain, User], RoomID, RoomName, Subject) ->
+    MUCLightDomain = gen_mod:get_module_opt_subhost(
+                       Domain, mod_muc_light, mod_muc_light:default_host()),
+    ?ERROR_MSG("~n~p~p~p~n", [Domain, User, self()]),
+    R = jid:make(RoomID, MUCLightDomain, <<>>), 
+    RoomUS = jid:to_lus(R),
+    AffUsersRes = mod_muc_light_db_backend:get_aff_users(RoomUS),
+    case mod_muc_light_room:process_request(jid:binary_to_bare(User), {RoomID, MUCLightDomain},
+                    {set, #config{ raw_config = 
+                                   [{<<"roomname">>, RoomName}, {<<"subject">>, Subject}] }}, 
+                    AffUsersRes ) of
+        {error,not_allowed} ->
+            {error,not_allowed};
+        {set, _, _}  ->
+            jid:to_binary(R)
+    end.
 
 
 send_message(Domain, RoomName, Sender, Message) ->
@@ -324,3 +334,7 @@ affiliate(JID, Kind) when is_binary(JID), is_binary(Kind) ->
            children = [ #xmlcdata{ content = JID } ]
           }.
 
+configure(Key, Val) ->
+    #xmlel{name = Key,
+           children = [ #xmlcdata{ content = Val } ]
+          }.
