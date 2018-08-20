@@ -127,22 +127,7 @@ handle_request_by_method(<<"PUT">>,
                        Req, State) ->
     assert_room_id_set(Req, State),
     #{user := User, jid := #jid{lserver = Server}, room_id := RoomID} = State,
-    #{<<"name">> := RoomName, <<"subject">> := Subject} = JSONData,
-    case mod_muc_light_commands:room_exists(Server, RoomID) of
-        false ->
-            mod_muc_light_commands:create_identifiable_room(Server,
-                                                            RoomID,
-                                                            RoomName,
-                                                            User,
-                                                            Subject);
-        true ->
-                     mod_muc_light_commands:change_room_config([Server,
-                                                               User],
-                                                               RoomID,
-                                                               Name,
-                                                               Subject)
-    end.
-
+    mod_muc_light_commands:change_config_or_create(Server, RoomID, Name, User, Subject).
 
 assert_room_id_set(_Req, #{room_id := _} = _State) ->
     ok.
