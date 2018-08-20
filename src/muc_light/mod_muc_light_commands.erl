@@ -23,14 +23,11 @@
 -export([start/2, stop/1]).
 
 -export([create_unique_room/4]).
--export([create_identifiable_room/5]).
 -export([send_message/4]).
 -export([invite_to_room/4]).
 -export([change_affiliation/5]).
 -export([delete_room/3]).
--export([change_room_config/4]).
-
-
+-export([change_config_or_create/5]).
 -include("mod_muc_light.hrl").
 -include("mongoose.hrl").
 -include("jlib.hrl").
@@ -72,34 +69,19 @@ commands() ->
        ]},
       {result, {name, binary}}],
 
-     [{name, create_identifiable_muc_light_room},
+     [{name, change_config_or_create_identifiable_room},
       {category, <<"muc-lights">>},
-      {desc, <<"Create a MUC Light room with user-provided username part in JID">>},
+      {desc, <<"Specify muc light room configuration and create/update room with the gived id.">>},
       {module, ?MODULE},
-      {function, create_identifiable_room},
+      {function, change_config_or_create},
       {action, update},
       {identifiers, [domain]},
-      {args,
-       [{domain, binary},
-        {id, binary},
-        {name, binary},
-        {owner, binary},
-        {subject, binary}
-       ]},
-      {result, {id, binary}}],
-
-     [{name, change_muc_light_room_configuration},
-      {category, <<"muc-lights">>},
-      {desc, <<"Change configuration of MUC Light room.">>},
-      {module, ?MODULE},
-      {function, change_room_config},
-      {action, update},
-      {identifiers, [domain, name]},
       {args,
        [
         {domain, binary},
         {id, binary},
         {name, binary},
+        {owner, binary},
         {subject, binary}
        ]},
       {result, {id, binary}}],
@@ -159,9 +141,6 @@ commands() ->
 create_unique_room(Domain, RoomName, Creator, Subject) ->
     create_room(Domain, <<>>, RoomName, Creator, Subject).
 
-create_identifiable_room(Domain, Identifier, RoomName, Creator, Subject) ->
-    create_room(Domain, Identifier, RoomName, Creator, Subject).
-
 invite_to_room(Domain, RoomName, Sender, Recipient0) ->
     Recipient1 = jid:binary_to_bare(Recipient0),
     {ok, R, _Aff} = muc_light_room_name_to_jid_and_aff(jid:from_binary(Sender), RoomName, Domain),
@@ -182,23 +161,16 @@ change_affiliation(Domain, RoomID, Sender, Recipient0, Affiliation) ->
     ejabberd_router:route(S, R, iq(jid:to_binary(S), jid:to_binary(R),
                                    <<"set">>, [Changes])).
 
-change_room_config([Domain, User], RoomID, RoomName, Subject) ->
-    MUCLightDomain = gen_mod:get_module_opt_subhost(
-                       Domain, mod_muc_light, mod_muc_light:default_host()),
-    ?ERROR_MSG("~n~p~p~p~n", [Domain, User, self()]),
-    R = jid:make(RoomID, MUCLightDomain, <<>>), 
-    RoomUS = jid:to_lus(R),
-    AffUsersRes = mod_muc_light_db_backend:get_aff_users(RoomUS),
-    case mod_muc_light_room:process_request(jid:binary_to_bare(User), {RoomID, MUCLightDomain},
-                    {set, #config{ raw_config = 
-                                   [{<<"roomname">>, RoomName}, {<<"subject">>, Subject}] }}, 
-                    AffUsersRes ) of
-        {error,not_allowed} ->
-            {error,not_allowed};
-        {set, _, _}  ->
-            jid:to_binary(R)
+change_config_or_create(Domain, Identifier, RoomName, User, Subject) ->
+    MUCLightDomain = gen_mod:get_module_opt_subhost(Domain, mod_muc_light,
+                                                    mod_muc_light:default_host()),
+    R = jid:make(Identifier, MUCLightDomain, <<>>),
+    case mod_muc_light:room_exists(R) of
+        false ->
+            create_room(Domain, Identifier, RoomName, User, Subject);
+        true ->
+            change_room_config(Domain, User, Identifier, RoomName, Subject)
     end.
-
 
 send_message(Domain, RoomName, Sender, Message) ->
     Body = #xmlel{name = <<"body">>,
@@ -244,6 +216,19 @@ create_room(Domain, Identifier, RoomName, Creator, Subject) ->
     case mod_muc_light:try_to_create_room(C, MUCService, Config) of
         {ok, RoomUS, _} ->
             jid:to_binary(RoomUS);
+        {error, _Reason} = E ->
+            E
+    end.
+
+change_room_config(Domain, User, RoomID, RoomName, Subject) ->
+    MUCLightDomain = gen_mod:get_module_opt_subhost(
+                       Domain, mod_muc_light, mod_muc_light:default_host()),
+    UserUS = jid:binary_to_bare(User),
+    ConfigReq = {set, #config{ raw_config =
+                               [{<<"roomname">>, RoomName}, {<<"subject">>, Subject}]}},
+    case mod_muc_light:change_room_config(UserUS, RoomID, MUCLightDomain, ConfigReq) of
+        {ok, RoomJID, _}  ->
+            jid:to_binary(RoomJID);
         {error, _Reason} = E ->
             E
     end.
@@ -332,9 +317,4 @@ affiliate(JID, Kind) when is_binary(JID), is_binary(Kind) ->
     #xmlel{name = <<"user">>,
            attrs = [{<<"affiliation">>, Kind}],
            children = [ #xmlcdata{ content = JID } ]
-          }.
-
-configure(Key, Val) ->
-    #xmlel{name = Key,
-           children = [ #xmlcdata{ content = Val } ]
           }.
