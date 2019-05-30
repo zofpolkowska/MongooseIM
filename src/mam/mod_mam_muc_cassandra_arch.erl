@@ -887,18 +887,9 @@ stored_binary_to_packet(Bin) ->
 %%      {db_message_format, module()}
 %%      ])
 compile_params_module(Params) ->
-    CodeStr = params_helper(expand_simple_param(Params)),
+    CodeStr = params_helper(Params),
     {Mod, Code} = dynamic_compile:from_string(CodeStr),
     code:load_binary(Mod, "mod_mam_muc_cassandra_arch_params.erl", Code).
-
-expand_simple_param(Params) ->
-    lists:flatmap(fun(simple) -> simple_params();
-                     ({simple, true}) -> simple_params();
-                     (Param) -> [Param]
-                  end, Params).
-
-simple_params() ->
-    [{db_message_format, mam_muc_message_xml}].
 
 params_helper(Params) ->
     binary_to_list(iolist_to_binary(io_lib:format(
